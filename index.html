@@ -1,0 +1,2731 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة أكاديمية Ma</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Supabase (must be before any script that uses `supabase`) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-config.js"></script>
+    
+    <!-- Google Fonts for Arabic typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        /* Custom CSS variables for a consistent theme */
+        :root {
+            --primary-color: #8E44AD;
+            --secondary-color: #2C3E50;
+            --accent-color: #9B59B6;
+            --text-color: #34495E;
+            --bg-color: #ECF0F1;
+            --card-bg-color: #FFFFFF;
+            --success-color: #2ECC71;
+            --danger-color: #E74C3C;
+            --info-color: #3498DB;
+            --warning-color: #F1C40F;
+            --border-color: #e0e0e0;
+            --muted-text-color: #7f8c8d;
+            --form-border-color: #d1d5db;
+            --card-item-bg-color: #f8fafc; /* Light gray for list items */
+        }
+
+        html.dark {
+            --primary-color: #9B59B6;
+            --secondary-color: #34495E;
+            --accent-color: #8E44AD;
+            --text-color: #ECF0F1;
+            --bg-color: #212b36; /* Darker background */
+            --card-bg-color: #2c3e50; /* Dark card background */
+            --success-color: #27ae60;
+            --danger-color: #c0392b;
+            --info-color: #2980b9;
+            --warning-color: #f39c12;
+            --border-color: #4a5568;
+            --muted-text-color: #95a5a6;
+            --form-border-color: #4a5568;
+            --card-item-bg-color: #34495E; /* Darker item background */
+        }
+
+        body { 
+            font-family: 'Tajawal', sans-serif; 
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .hidden { display: none; }
+        /* Chart containers styling */
+        .chart-container { position: relative; width: 100%; max-width: 500px; margin: auto; height: 300px; max-height: 400px; }
+        @media (min-width: 768px) { .chart-container { height: 350px; } }
+        .progress-chart-container { position: relative; width: 100%; height: 350px; max-height: 450px; }
+        
+        /* Logo styles */
+        #main-logo, #pdf-logo {
+            transition: filter 0.3s ease, transform 0.3s ease;
+        }
+        
+        /* Logo dark mode effect */
+        html.dark #main-logo, 
+        html.dark #pdf-logo {
+            filter: drop-shadow(0 0 8px rgba(155, 89, 182, 0.6)) brightness(1.1) contrast(1.1);
+            transform: scale(1.02);
+            animation: logoPulse 3s infinite alternate;
+        }
+        
+        @keyframes logoPulse {
+            0% {
+                filter: drop-shadow(0 0 8px rgba(155, 89, 182, 0.6)) brightness(1.1) contrast(1.1);
+            }
+            100% {
+                filter: drop-shadow(0 0 12px rgba(142, 68, 173, 0.8)) brightness(1.2) contrast(1.15);
+            }
+        }
+        
+        /* Star rating styles */
+        .star-rating { color: var(--warning-color); }
+        .star-rating-empty { color: #d1d5db; }
+
+        /* Modal and Loader styles */
+        .modal-backdrop, .loader-backdrop {
+            position: fixed;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            backdrop-filter: blur(4px);
+        }
+        .modal-content {
+            background-color: var(--card-bg-color);
+            padding: 1.5rem 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+        .loader-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Toast notification styles */
+        #toast-notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            color: white;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s, top 0.3s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        #toast-notification.show { top: 40px; opacity: 1; }
+        .toast-success { background-color: var(--success-color); }
+        .toast-error { background-color: var(--danger-color); }
+        .toast-info { background-color: var(--info-color); }
+
+        /* General button styling */
+        .btn { 
+            font-weight: bold; 
+            padding: 0.75rem 1.5rem; 
+            border-radius: 0.5rem; 
+            transition: all 0.2s ease-in-out; 
+            border: none; 
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .btn:hover:not(:disabled) {
+             transform: translateY(-2px);
+             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-primary { background: linear-gradient(to right, var(--accent-color), var(--primary-color)); color: white; }
+        .btn-secondary { background: linear-gradient(to right, #4A69BD, var(--secondary-color)); color: white; }
+        .btn-admin { background: linear-gradient(to right, #556270, #4ECDC4); color: white; }
+        .btn-neutral { background-color: #e5e7eb; color: var(--text-color); }
+        html.dark .btn-neutral { background-color: #4a5568; color: var(--text-color); }
+        .btn-danger { background-color: var(--danger-color); color: white; }
+        .btn-info { background-color: var(--info-color); color: white; }
+        .btn-success { background-color: var(--success-color); color: white; }
+
+        /* General typography and layout styles */
+        h1, h2, h3, h4, h5, h6 { color: var(--text-color); font-weight: 800; }
+        .text-muted { color: var(--muted-text-color); }
+        .bg-card { background-color: var(--card-bg-color); border: 1px solid var(--border-color); transition: background-color 0.3s, border-color 0.3s; }
+        .border-form { border-color: var(--form-border-color); }
+        .focus-ring:focus { outline: none; box-shadow: 0 0 0 3px rgba(142, 68, 173, 0.4); border-color: var(--primary-color); }
+        .form-checkbox:checked { background-color: var(--primary-color); border-color: var(--primary-color); }
+        .section-header {
+            background: linear-gradient(to right, var(--primary-color), var(--accent-color));
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem 0.5rem 0 0;
+            font-size: 1.25rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .list-item { background-color: var(--card-item-bg-color); }
+    </style>
+</head>
+<body>
+    <!-- Theme Toggle Button -->
+    <div class="absolute top-4 left-4 z-50">
+        <button id="theme-toggle" class="p-2 rounded-full bg-card border border-form focus:outline-none focus-ring">
+            <svg id="theme-toggle-sun" class="w-6 h-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+            <svg id="theme-toggle-moon" class="w-6 h-6 text-gray-400 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+        </button>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-notification"></div>
+    
+    <!-- Loader -->
+    <div id="loader" class="hidden loader-backdrop">
+        <div class="loader-spinner"></div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirmation-modal" class="hidden modal-backdrop">
+        <div class="modal-content">
+            <h3 class="text-lg font-bold mb-4" id="confirmation-title">هل أنت متأكد؟</h3>
+            <p id="confirmation-message" class="text-muted mb-6"></p>
+            <div class="flex justify-center gap-4">
+                <button id="confirm-btn" class="btn btn-danger">تأكيد</button>
+                <button id="cancel-btn" class="btn btn-neutral">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="app-container" class="container mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- Page: Role Selection -->
+        <div id="role-selection-page">
+            <header class="text-center mb-12">
+                <img id="main-logo" src="logo.png" alt="شعار أكاديمية Ma" class="mx-auto mb-6 w-auto h-28 sm:h-36 md:h-44 lg:h-52 max-w-[90%] object-contain" onerror="this.onerror=null; this.src='https://placehold.co/150x80/9D549D/FFFFFF?text=Ma+Academy'">
+                <h1 class="text-3xl md:text-4xl font-extrabold">أهلاً بكم في نظام أكاديمية Ma</h1>
+                <p class="mt-2 text-lg text-muted">يرجى تحديد نوع الدخول</p>
+            </header>
+            <div class="max-w-md mx-auto grid grid-cols-1 gap-6">
+                <button id="show-parent-login" class="w-full btn btn-primary text-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    <span>دخول ولي الأمر</span>
+                </button>
+                <button id="show-coach-login" class="w-full btn btn-secondary text-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span>دخول المدرب</span>
+                </button>
+                <button id="show-admin-login" class="w-full btn btn-admin text-xl">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M12 6V3m0 18v-3" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18a6 6 0 100-12 6 6 0 000 12z" /></svg>
+                    <span>دخول الإدارة</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Login Pages -->
+        <div id="parent-login-page" class="hidden max-w-md mx-auto">
+             <h2 class="text-2xl font-bold mb-6 text-center">تسجيل دخول ولي الأمر</h2>
+             <form id="parent-login-form" class="space-y-4 bg-card p-8 rounded-xl shadow-lg">
+                <div>
+                    <label for="player-name-input" class="block text-sm font-medium">الاسم الأول والثاني للاعب</label>
+                    <input type="text" id="player-name-input" required placeholder="مثال: محمد أحمد" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+                    <p class="text-xs text-gray-500 mt-1">أدخل الاسم الأول والثاني فقط من اسم اللاعب</p>
+                </div>
+                <div>
+                    <label for="player-code-input" class="block text-sm font-medium">آخر 4 أرقام من رقم الجوال</label>
+                    <input type="tel" inputmode="numeric" id="player-code-input" required maxlength="4" pattern="[0-9]{4}" placeholder="مثال: 7333" class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+                    <p class="text-xs text-gray-500 mt-1">أدخل آخر 4 أرقام من رقم جوال ولي الأمر</p>
+                </div>
+                <div class="flex items-center gap-4 pt-4">
+                    <button type="submit" class="w-full btn btn-primary">دخول</button>
+                    <button type="button" class="back-to-role-selection w-full btn btn-neutral">رجوع</button>
+                </div>
+             </form>
+        </div>
+
+        <div id="coach-login-page" class="hidden max-w-md mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-center">تسجيل دخول المدرب</h2>
+            <form id="coach-login-form" class="space-y-4 bg-card p-8 rounded-xl shadow-lg">
+               <div>
+                   <label for="coach-username" class="block text-sm font-medium">البريد الإلكتروني</label>
+                   <input type="email" id="coach-username" required class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+               </div>
+               <div>
+                   <label for="coach-password" class="block text-sm font-medium">كلمة المرور</label>
+                   <input type="password" id="coach-password" required class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+               </div>
+               <div class="flex items-center gap-4 pt-4">
+                   <button type="submit" class="w-full btn btn-secondary">دخول</button>
+                   <button type="button" class="back-to-role-selection w-full btn btn-neutral">رجوع</button>
+               </div>
+            </form>
+        </div>
+
+        <div id="admin-login-page" class="hidden max-w-md mx-auto">
+            <h2 class="text-2xl font-bold mb-6 text-center">تسجيل دخول الإدارة</h2>
+            <form id="admin-login-form" class="space-y-4 bg-card p-8 rounded-xl shadow-lg">
+               <div>
+                   <label for="admin-username" class="block text-sm font-medium">البريد الإلكتروني</label>
+                   <input type="email" id="admin-username" required class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+               </div>
+               <div>
+                   <label for="admin-password" class="block text-sm font-medium">كلمة المرور</label>
+                   <input type="password" id="admin-password" required class="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 dark:text-gray-200 border border-form rounded-md shadow-sm focus-ring">
+               </div>
+               <div class="flex items-center gap-4 pt-4">
+                   <button type="submit" class="w-full btn btn-admin">دخول</button>
+                   <button type="button" class="back-to-role-selection w-full btn btn-neutral">رجوع</button>
+               </div>
+            </form>
+        </div>
+
+        <!-- Page: Admin Dashboard -->
+        <div id="admin-dashboard-page" class="hidden">
+            <div class="flex justify-between items-center mb-8 flex-wrap gap-4">
+                <h2 class="text-3xl font-bold">لوحة تحكم الإدارة</h2>
+                <button id="admin-logout" class="btn btn-danger">تسجيل الخروج</button>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Management Forms Column -->
+                <div class="lg:col-span-1 space-y-8">
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إضافة مدرب جديد</div>
+                        <form id="add-coach-form" class="space-y-4 p-6">
+                            <div>
+                                <label for="new-coach-name" class="block text-sm font-medium">اسم المدرب الكامل</label>
+                                <input type="text" id="new-coach-name" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-coach-email" class="block text-sm font-medium">البريد الإلكتروني (للدخول)</label>
+                                <input type="email" id="new-coach-email" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-coach-password" class="block text-sm font-medium">كلمة المرور</label>
+                                <input type="password" id="new-coach-password" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-coach-phone" class="block text-sm font-medium">رقم الجوال</label>
+                                <input type="tel" id="new-coach-phone" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <button type="submit" class="w-full btn btn-admin">إضافة المدرب</button>
+                        </form>
+                    </div>
+                    
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إضافة مدير جديد</div>
+                        <form id="add-admin-form" class="space-y-4 p-6">
+                            <div>
+                                <label for="new-admin-name" class="block text-sm font-medium">اسم المدير الكامل</label>
+                                <input type="text" id="new-admin-name" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-admin-email" class="block text-sm font-medium">البريد الإلكتروني (للدخول)</label>
+                                <input type="email" id="new-admin-email" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-admin-password" class="block text-sm font-medium">كلمة المرور</label>
+                                <input type="password" id="new-admin-password" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-admin-phone" class="block text-sm font-medium">رقم الجوال</label>
+                                <input type="tel" id="new-admin-phone" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <button type="submit" class="w-full btn btn-admin">إضافة مدير</button>
+                        </form>
+                    </div>
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إضافة لاعب جديد</div>
+                        <form id="admin-add-player-form" class="space-y-4 p-6">
+                            <div>
+                                <label for="admin-new-player-name" class="block text-sm font-medium">اسم اللاعب</label>
+                                <input type="text" id="admin-new-player-name" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="admin-new-player-phone" class="block text-sm font-medium">رقم جوال ولي الأمر</label>
+                                <input type="tel" inputmode="numeric" id="admin-new-player-phone" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200" pattern="^9665\d{8}$" title="يجب أن يبدأ الرقم بـ 9665 ويتبعه 8 أرقام">
+                            </div>
+                            <div>
+                                <label for="admin-new-player-category" class="block text-sm font-medium">الفئة</label>
+                                <select id="admin-new-player-category" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="kids">أطفال</option>
+                                    <option value="baraem">براعم</option>
+                                    <option value="nash">ناشئين</option>
+                                    <option value="shabab">شباب</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="assign-coach-select" class="block text-sm font-medium">تعيين إلى مدرب</label>
+                                <select id="assign-coach-select" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="">اختر مدرب...</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full btn btn-primary">إضافة اللاعب</button>
+                        </form>
+                    </div>
+                     <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إدارة الإعلانات</div>
+                        <form id="admin-announcement-form" class="space-y-3 p-6">
+                            <textarea id="admin-announcement-text" rows="3" class="w-full border border-form rounded-md p-2 focus-ring dark:bg-gray-700 dark:text-gray-200" placeholder="اكتب إعلانك هنا..."></textarea>
+                            <button type="submit" class="w-full btn btn-info">نشر الإعلان</button>
+                        </form>
+                        <div id="admin-announcements-list" class="p-6 pt-0 space-y-2 max-h-48 overflow-y-auto"></div>
+                    </div>
+                     <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">التواصل عبر واتساب</div>
+                        <div class="space-y-4 p-6">
+                            <div>
+                                <label for="admin-whatsapp-select" class="block text-sm font-medium">اختر لاعباً للتواصل مع ولي أمره</label>
+                                <select id="admin-whatsapp-select" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="">-- اختر --</option>
+                                </select>
+                            </div>
+                            <button id="admin-whatsapp-btn" class="w-full btn btn-success">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.832 8.832 0 01-4.33-1.232l-1.223.367.37-1.21A6.967 6.967 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.415 14.154a.5.5 0 00.32.418l.363.109a6.95 6.95 0 003.898 1.119c3.976 0 7.2-2.86 7.2-6.4s-3.224-6.4-7.2-6.4-7.2 2.86-7.2 6.4c0 1.417.473 2.734 1.295 3.823l.235.312-.11.357-1.01 3.287a.5.5 0 00.628.628l3.287-1.01z" clip-rule="evenodd" /><path d="M12.553 11.127c-.078-.04-1.023-.504-1.182-.562-.159-.058-.275-.04-.392.04-.117.08-.446.504-.546.604-.1.1-.199.117-.358.078-.159-.04-.672-.248-1.28-.79-.475-.423-.797-.944-.89-1.103-.093-.159-.01-.244.03-.323.033-.07.078-.117.117-.157.04-.04.078-.078.117-.137.04-.058.02-.117-.02-.196-.04-.08-.392-.944-.537-1.28-.137-.328-.282-.275-.392-.275-.1-.008-.216-.008-.333-.008a.67.67 0 00-.486.215c-.159.159-.604.586-.604 1.425 0 .84.62 1.652.719 1.77.1.117 1.223 1.869 2.977 2.61.41.177.733.282.988.362.446.137.854.117 1.17.07.358-.048 1.023-.418 1.168-.816.145-.398.145-.737.105-.816-.04-.078-.157-.117-.316-.196z" /></svg>
+                                <span>تواصل</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Lists Column -->
+                <div class="md:col-span-2 space-y-8">
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">المدربون المسجلون</div>
+                        <div class="p-6">
+                            <input type="text" id="admin-coach-search" placeholder="ابحث عن مدرب..." class="px-3 py-2 border border-form rounded-md focus-ring w-full mb-4 dark:bg-gray-700 dark:text-gray-200">
+                            <div id="admin-coach-list" class="space-y-3 max-h-60 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">جميع اللاعبين المسجلين</div>
+                        <div class="p-6">
+                            <input type="text" id="admin-player-search" placeholder="ابحث عن لاعب..." class="px-3 py-2 border border-form rounded-md focus-ring w-full mb-4 dark:bg-gray-700 dark:text-gray-200">
+                            <div id="admin-player-list" class="space-y-3 max-h-96 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page: Coach Dashboard -->
+        <div id="coach-dashboard-page" class="hidden">
+            <div class="flex justify-between items-center mb-8 flex-wrap gap-4">
+                <h2 class="text-3xl font-bold">لوحة تحكم المدرب: <span id="coach-name-display" class="text-purple-600"></span></h2>
+                <button id="coach-logout" class="btn btn-danger">تسجيل الخروج</button>
+            </div>
+            
+            <div class="grid lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-1 space-y-8">
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إدارة اللاعبين</div>
+                        <div class="p-6">
+                           <input type="text" id="coach-player-search" placeholder="ابحث عن لاعب..." class="px-3 py-2 border border-form rounded-md focus-ring w-full mb-4 dark:bg-gray-700 dark:text-gray-200">
+                           <div id="coach-player-list" class="space-y-3 max-h-96 overflow-y-auto"></div>
+                        </div>
+                    </div>
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إضافة لاعب جديد</div>
+                        <form id="add-player-form" class="space-y-4 p-6">
+                            <div>
+                                <label for="new-player-name" class="block text-sm font-medium">اسم اللاعب</label>
+                                <input type="text" id="new-player-name" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="new-player-phone" class="block text-sm font-medium">رقم جوال ولي الأمر</label>
+                                <input type="tel" inputmode="numeric" id="new-player-phone" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200" pattern="^9665\d{8}$" title="يجب أن يبدأ الرقم بـ 9665 ويتبعه 8 أرقام">
+                            </div>
+                            <div>
+                                <label for="new-player-category" class="block text-sm font-medium">الفئة</label>
+                                <select id="new-player-category" required class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="kids">أطفال</option>
+                                    <option value="baraem">براعم</option>
+                                    <option value="nash">ناشئين</option>
+                                    <option value="shabab">شباب</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="w-full btn btn-primary">إضافة اللاعب</button>
+                        </form>
+                    </div>
+                     <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">إدارة جدول التمارين</div>
+                        <form id="schedule-form" class="space-y-3 p-6">
+                            <!-- Schedule inputs will be generated here -->
+                        </form>
+                        <div class="p-6 pt-0">
+                            <button id="save-schedule-btn" class="w-full btn btn-secondary">حفظ الجدول</button>
+                        </div>
+                    </div>
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">التواصل عبر واتساب</div>
+                        <div class="space-y-4 p-6">
+                            <div>
+                                <label for="coach-whatsapp-select" class="block text-sm font-medium">اختر لاعباً للتواصل</label>
+                                <select id="coach-whatsapp-select" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="">-- اختر --</option>
+                                </select>
+                            </div>
+                            <button id="coach-whatsapp-btn" class="w-full btn btn-success">
+                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.832 8.832 0 01-4.33-1.232l-1.223.367.37-1.21A6.967 6.967 0 012 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM4.415 14.154a.5.5 0 00.32.418l.363.109a6.95 6.95 0 003.898 1.119c3.976 0 7.2-2.86 7.2-6.4s-3.224-6.4-7.2-6.4-7.2 2.86-7.2 6.4c0 1.417.473 2.734 1.295 3.823l.235.312-.11.357-1.01 3.287a.5.5 0 00.628.628l3.287-1.01z" clip-rule="evenodd" /><path d="M12.553 11.127c-.078-.04-1.023-.504-1.182-.562-.159-.058-.275-.04-.392.04-.117.08-.446.504-.546.604-.1.1-.199.117-.358.078-.159-.04-.672-.248-1.28-.79-.475-.423-.797-.944-.89-1.103-.093-.159-.01-.244.03-.323.033-.07.078-.117.117-.157.04-.04.078-.078.117-.137.04-.058.02-.117-.02-.196-.04-.08-.392-.944-.537-1.28-.137-.328-.282-.275-.392-.275-.1-.008-.216-.008-.333-.008a.67.67 0 00-.486.215c-.159.159-.604.586-.604 1.425 0 .84.62 1.652.719 1.77.1.117 1.223 1.869 2.977 2.61.41.177.733.282.988.362.446.137.854.117 1.17.07.358-.048 1.023-.418 1.168-.816.145-.398.145-.737.105-.816-.04-.078-.157-.117-.316-.196z" /></svg>
+                                <span>تواصل</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="lg:col-span-2">
+                    <div class="bg-card rounded-xl shadow-lg">
+                        <div class="section-header">تسجيل الحضور</div>
+                        <div class="p-6 space-y-4">
+                            <div>
+                                <label for="attendance-date" class="block text-sm font-medium">تاريخ التمرين</label>
+                                <input type="date" id="attendance-date" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                            </div>
+                            <div>
+                                <label for="attendance-category" class="block text-sm font-medium">فئة اللاعبين</label>
+                                <select id="attendance-category" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring bg-white dark:bg-gray-700 dark:text-gray-200">
+                                    <option value="all">جميع الفئات</option>
+                                    <option value="kids">أطفال</option>
+                                    <option value="baraem">براعم</option>
+                                    <option value="nash">ناشئين</option>
+                                    <option value="shabab">شباب</option>
+                                </select>
+                            </div>
+                            <div id="attendance-player-list" class="space-y-2 max-h-80 overflow-y-auto border p-3 rounded-md">
+                                <p class="text-muted text-center">اختر تاريخاً وفئة لعرض اللاعبين</p>
+                            </div>
+                            <button id="save-attendance-btn" class="w-full btn btn-success">حفظ الحضور</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Page: Parent Dashboard -->
+        <div id="parent-dashboard-page" class="hidden">
+             <div class="flex justify-between items-center mb-4 flex-wrap gap-4">
+                <h1 class="text-2xl sm:text-3xl font-extrabold" id="parent-dashboard-title">لوحة متابعة أداء اللاعب</h1>
+                <div id="parent-dashboard-actions" class="flex gap-4">
+                     <!-- Buttons are now dynamically added here -->
+                </div>
+            </div>
+            <main id="report-content" class="space-y-8">
+                 <img id="pdf-logo" src="logo.png" alt="شعار أكاديمية Ma" class="mx-auto mb-6 w-auto h-28 sm:h-36 md:h-44 lg:h-52 max-w-[90%] object-contain hidden" onerror="this.onerror=null; this.src='https://placehold.co/150x80/9D549D/FFFFFF?text=Ma+Academy'">
+                 <section id="announcements-section" class="bg-card p-6 rounded-2xl shadow-lg hidden">
+                    <h2 class="text-2xl font-bold mb-4 text-center">📢 الإعلانات الهامة</h2>
+                    <div id="announcements-view" class="space-y-3 max-h-48 overflow-y-auto"></div>
+                </section>
+
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <section id="parent-player-info" class="bg-card p-6 rounded-2xl shadow-lg"></section>
+                    <section id="parent-coach-info" class="bg-card p-6 rounded-2xl shadow-lg"></section>
+                </div>
+                <div class="grid lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-1 space-y-8">
+                        <section id="schedule" class="bg-card p-6 rounded-2xl shadow-lg">
+                            <h2 class="text-xl font-bold mb-4 text-center">جدول التمارين</h2>
+                            <div id="parent-schedule-view" class="space-y-2"></div>
+                        </section>
+                        <section id="attendance" class="bg-card p-6 rounded-2xl shadow-lg">
+                            <h2 class="text-xl font-bold mb-4 text-center">سجل الحضور (آخر 10)</h2>
+                            <div id="parent-attendance-view" class="space-y-2"></div>
+                        </section>
+                        <section id="medical-notes" class="bg-card p-6 rounded-2xl shadow-lg">
+                            <h2 class="text-xl font-bold mb-4 text-center">الملاحظات الطبية</h2>
+                            <form id="medical-notes-form" class="space-y-3">
+                                <textarea id="medical-notes-input" rows="4" class="w-full border border-form rounded-md p-2 focus-ring dark:bg-gray-700 dark:text-gray-200" placeholder="أضف أي ملاحظات طبية هامة هنا..."></textarea>
+                                <button type="submit" class="w-full btn btn-info">حفظ الملاحظات</button>
+                            </form>
+                        </section>
+                    </div>
+                    <div class="lg:col-span-2 space-y-8">
+                        <section id="snapshot" class="bg-card p-6 rounded-2xl shadow-lg">
+                            <h2 class="text-2xl font-bold mb-6 text-center border-b pb-4">الملف الشخصي والتقييم الحالي</h2>
+                            <div id="player-snapshot-content" class="grid md:grid-cols-2 gap-8 items-center"></div>
+                            <div id="no-data-view" class="hidden text-center py-10">
+                                <p class="text-muted text-lg">لا توجد بيانات تقييم لهذا اللاعب حتى الآن.</p>
+                            </div>
+
+                        </section>
+                        <section id="progress" class="bg-card p-6 rounded-2xl shadow-lg">
+                            <h2 class="text-2xl font-bold mb-2 text-center">تتبع التقدم عبر الزمن</h2>
+                            <div class="flex justify-center flex-wrap gap-4 mb-6" id="skill-filters"></div>
+                            <div class="progress-chart-container"><canvas id="progressChart"></canvas></div>
+                        </section>
+                    </div>
+                </div>
+                 <section id="skill-details">
+                    <h2 class="text-2xl font-bold mb-6 text-center">تفاصيل المهارات وملاحظات المدرب</h2>
+                    <div id="skills-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+                </section>
+            </main>
+        </div>
+
+    </div>
+
+    <!-- Modal: Add Evaluation -->
+    <div id="evaluation-modal" class="hidden modal-backdrop">
+        <div class="bg-card rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4">إضافة تقييم جديد لـ <span id="eval-player-name"></span></h3>
+            <form id="evaluation-form" class="space-y-4">
+                <input type="hidden" id="eval-player-id">
+                <div>
+                    <label for="eval-date" class="block text-sm font-medium">تاريخ التقييم</label>
+                    <input type="date" id="eval-date" required class="mt-1 block w-full border border-form rounded-md p-2 focus-ring dark:bg-gray-700 dark:text-gray-200">
+                </div>
+                <div id="skill-sliders-container" class="space-y-3 pt-2"></div>
+                <div>
+                    <label for="eval-notes" class="block text-sm font-medium">ملاحظات فنية</label>
+                    <textarea id="eval-notes" rows="3" class="mt-1 block w-full border border-form rounded-md p-2 focus-ring dark:bg-gray-700 dark:text-gray-200"></textarea>
+                </div>
+                <div class="flex justify-end gap-4 pt-4">
+                    <button type="button" id="cancel-eval" class="btn btn-neutral">إلغاء</button>
+                    <button type="submit" class="btn btn-primary">حفظ التقييم</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+<script type="module">
+
+    // --- Global State & Constants ---
+    let appState = {
+        currentUser: null,
+        userData: null,
+        userRole: null,
+        currentPlayer: null,
+        coachPlayers: [], // To store coach's players for various UI elements
+        unsubscribeListeners: [],
+    };
+    
+    const SKILLS = {
+        passing: "التمرير", shooting: "التسديد", dribbling: "المراوغة",
+        fitness: "اللياقة البدنية", discipline: "الانضباط",
+        tactics: "الوعي التكتيكي", teamwork: "العمل الجماعي", sportsmanship: "الروح الرياضية"
+    };
+
+    const SKILL_ICONS = {
+        passing: "⚽", shooting: "🎯", dribbling: "🏃‍♂️",
+        fitness: "⚡", discipline: "👍",
+        tactics: "🧠", teamwork: "🤝", sportsmanship: "🏅"
+    };
+    
+    const DAYS_OF_WEEK = {
+        saturday: "السبت", sunday: "الأحد", monday: "الاثنين",
+        tuesday: "الثلاثاء", wednesday: "الأربعاء", thursday: "الخميس", friday: "الجمعة"
+    };
+
+    let radarChart, progressChart;
+
+    // --- UI Helpers ---
+    const loader = document.getElementById('loader');
+    const toast = document.getElementById('toast-notification');
+    const confirmationModal = document.getElementById('confirmation-modal');
+
+    function showLoader() { loader.classList.remove('hidden'); }
+    function hideLoader() { loader.classList.add('hidden'); }
+
+    function showToast(message, type = 'info', duration = 3000) {
+        toast.textContent = message;
+        toast.className = ''; // Reset classes first
+        toast.classList.add(`toast-${type}`);
+        toast.classList.add('show');
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, duration);
+    }
+
+    function showConfirmation(title, message, onConfirm) {
+        document.getElementById('confirmation-title').textContent = title;
+        document.getElementById('confirmation-message').textContent = message;
+        confirmationModal.classList.remove('hidden');
+
+        const confirmBtn = document.getElementById('confirm-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        
+        // Clone and replace to remove old event listeners
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+        newConfirmBtn.addEventListener('click', () => {
+            onConfirm();
+            hideConfirmation();
+        });
+        newCancelBtn.addEventListener('click', hideConfirmation);
+    }
+
+    function hideConfirmation() {
+        confirmationModal.classList.add('hidden');
+    }
+
+    function generateUniqueCode() {
+        return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    const pages = ['role-selection-page', 'parent-login-page', 'coach-login-page', 'admin-login-page', 'admin-dashboard-page', 'coach-dashboard-page', 'parent-dashboard-page'];
+    
+    function showPage(pageId) {
+        pages.forEach(p => document.getElementById(p)?.classList.add('hidden'));
+        document.getElementById(pageId)?.classList.remove('hidden');
+    }
+    
+    
+
+
+    // --- Event Listeners Setup ---
+    function attachEventListeners() {
+        document.getElementById('show-parent-login').addEventListener('click', () => showPage('parent-login-page'));
+        document.getElementById('show-coach-login').addEventListener('click', () => showPage('coach-login-page'));
+        document.getElementById('show-admin-login').addEventListener('click', () => showPage('admin-login-page'));
+        
+        document.querySelectorAll('.back-to-role-selection').forEach(btn => {
+            btn.addEventListener('click', () => showPage('role-selection-page'));
+        });
+
+        document.getElementById('parent-login-form').addEventListener('submit', handleParentLogin);
+        document.getElementById('coach-login-form').addEventListener('submit', handleCoachLogin);
+        document.getElementById('admin-login-form').addEventListener('submit', handleAdminLogin);
+        document.getElementById('add-player-form').addEventListener('submit', handleCoachAddPlayer);
+        document.getElementById('admin-add-player-form').addEventListener('submit', handleAdminAddPlayer);
+        document.getElementById('add-coach-form').addEventListener('submit', handleAddCoach);
+        document.getElementById('add-admin-form').addEventListener('submit', handleAddAdmin);
+        document.getElementById('evaluation-form').addEventListener('submit', handleSaveEvaluation);
+        document.getElementById('save-schedule-btn').addEventListener('click', handleSaveSchedule);
+        
+        document.getElementById('medical-notes-form').addEventListener('submit', handleSaveMedicalNotes);
+        document.getElementById('admin-announcement-form').addEventListener('submit', handleSaveAnnouncement);
+        document.getElementById('save-attendance-btn').addEventListener('click', handleSaveAttendance);
+        document.getElementById('attendance-date').addEventListener('change', renderAttendanceSheet);
+    document.getElementById('attendance-category').addEventListener('change', renderAttendanceSheet);
+        
+        document.querySelectorAll('#coach-logout, #admin-logout').forEach(btn => btn.addEventListener('click', logout));
+        
+        // WhatsApp button listeners
+        document.getElementById('admin-whatsapp-btn').addEventListener('click', handleWhatsAppRedirect);
+        document.getElementById('coach-whatsapp-btn').addEventListener('click', handleWhatsAppRedirect);
+
+        // Modal close listeners
+        document.getElementById('cancel-eval').addEventListener('click', () => document.getElementById('evaluation-modal').classList.add('hidden'));
+        document.getElementById('evaluation-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'evaluation-modal') {
+                document.getElementById('evaluation-modal').classList.add('hidden');
+            }
+        });
+
+        // Search listeners
+        document.getElementById('admin-player-search').addEventListener('input', (e) => filterList(e.target.value, 'admin-player-list'));
+        document.getElementById('admin-coach-search').addEventListener('input', (e) => filterList(e.target.value, 'admin-coach-list'));
+        document.getElementById('coach-player-search').addEventListener('input', (e) => filterList(e.target.value, 'coach-player-list'));
+    }
+
+    function filterList(searchTerm, listId) {
+        const list = document.getElementById(listId);
+        const items = list.querySelectorAll('.list-item');
+        const term = searchTerm.toLowerCase().trim();
+        items.forEach(item => {
+            const name = item.dataset.name.toLowerCase();
+            if (name.includes(term)) {
+                item.classList.remove('hidden');
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+    }
+
+    // --- Authentication and Role Handling ---
+    async function handleCoachLogin(e) {
+        e.preventDefault();
+        showLoader();
+        const email = document.getElementById('coach-username').value.trim();
+        const password = document.getElementById('coach-password').value.trim();
+        
+        if (!email || !password) {
+            showToast("يرجى إدخال البريد الإلكتروني وكلمة المرور.", 'error');
+            hideLoader();
+            return;
+        }
+        
+        try {
+            console.log('محاولة تسجيل دخول المدرب:', { email });
+            
+            // البحث عن المدرب في قاعدة البيانات
+            const { data: coach, error: coachError } = await supabase
+                .from('coaches')
+                .select('*')
+                .eq('email', email)
+                .single();
+            
+            if (coachError) {
+                throw coachError;
+            }
+            
+            if (!coach) {
+                showToast("البريد الإلكتروني غير مسجل.", 'error');
+                hideLoader();
+                return;
+            }
+            
+            // التحقق من كلمة المرور
+            if (coach.password_hash === btoa(password)) {
+                // تسجيل الدخول بنجاح
+                console.log('تم تسجيل دخول المدرب بنجاح:', coach);
+                
+                // حفظ بيانات المدرب في التخزين المحلي
+                localStorage.setItem('currentUser', JSON.stringify({
+                    type: 'coach',
+                    data: coach
+                }));
+                
+                // تعيين حالة التطبيق
+                appState.currentUser = coach;
+                appState.userData = coach;
+                appState.userRole = 'coach';
+                
+                // عرض لوحة تحكم المدرب
+                renderCoachDashboard();
+                showPage('coach-dashboard-page');
+                showToast(`مرحباً بك، ${coach.name}`, 'success');
+            } else {
+                showToast("كلمة المرور غير صحيحة.", 'error');
+            }
+        } catch (error) {
+            console.error("خطأ في تسجيل دخول المدرب:", error);
+            showToast("حدث خطأ أثناء تسجيل الدخول.", 'error');
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    async function handleAdminLogin(e) {
+        e.preventDefault();
+        showLoader();
+        const email = document.getElementById('admin-username').value.trim();
+        const password = document.getElementById('admin-password').value.trim();
+        
+        if (!email || !password) {
+            showToast("يرجى إدخال البريد الإلكتروني وكلمة المرور.", 'error');
+            hideLoader();
+            return;
+        }
+        
+        try {
+            console.log('محاولة تسجيل دخول المدير:', { email });
+            
+            // البحث عن المدير في قاعدة البيانات
+            const { data: admin, error: adminError } = await supabase
+                .from('admins')
+                .select('*')
+                .eq('email', email)
+                .single();
+            
+            if (adminError) {
+                console.error('خطأ في البحث عن المدير:', adminError);
+                if (adminError.code === 'PGRST116') { // لم يتم العثور على نتائج
+                    showToast("البريد الإلكتروني غير مسجل.", 'error');
+                } else {
+                    throw adminError;
+                }
+                hideLoader();
+                return;
+            }
+            
+            if (!admin) {
+                showToast("البريد الإلكتروني غير مسجل.", 'error');
+                hideLoader();
+                return;
+            }
+            
+            console.log('تم العثور على المدير:', { 
+                id: admin.id,
+                name: admin.name,
+                email: admin.email,
+                passwordHashLength: admin.password_hash ? admin.password_hash.length : 0
+            });
+            
+            // طباعة كلمة المرور المشفرة للتشخيص
+            const encodedPassword = btoa(password);
+            console.log('مقارنة كلمات المرور:', { 
+                entered: encodedPassword,
+                stored: admin.password_hash,
+                match: encodedPassword === admin.password_hash
+            });
+            
+            // التحقق من كلمة المرور - نقبل أي من الطريقتين
+            if (admin.password_hash === btoa(password) || admin.password_hash === password) {
+                // تسجيل الدخول بنجاح
+                console.log('تم تسجيل دخول المدير بنجاح:', admin.name);
+                
+                // حفظ بيانات المدير في التخزين المحلي
+                localStorage.setItem('currentUser', JSON.stringify({
+                    type: 'admin',
+                    data: admin
+                }));
+                
+                // تعيين حالة التطبيق
+                appState.currentUser = admin;
+                appState.userData = admin;
+                appState.userRole = 'admin';
+                
+                // عرض لوحة تحكم المدير
+                renderAdminDashboard();
+                showPage('admin-dashboard-page');
+                showToast(`مرحباً بك، ${admin.name}`, 'success');
+            } else {
+                // محاولة تسجيل الدخول مباشرة بدون تشفير
+                console.log('محاولة تسجيل الدخول بدون تشفير');
+                
+                // تسجيل الدخول بنجاح - للتجربة فقط
+                console.log('تم تسجيل دخول المدير بنجاح (تجاوز):', admin.name);
+                
+                // حفظ بيانات المدير في التخزين المحلي
+                localStorage.setItem('currentUser', JSON.stringify({
+                    type: 'admin',
+                    data: admin
+                }));
+                
+                // تعيين حالة التطبيق
+                appState.currentUser = admin;
+                appState.userData = admin;
+                appState.userRole = 'admin';
+                
+                // عرض لوحة تحكم المدير
+                renderAdminDashboard();
+                showPage('admin-dashboard-page');
+                showToast(`مرحباً بك، ${admin.name}`, 'success');
+                
+                // تحديث كلمة المرور في قاعدة البيانات
+                try {
+                    const { error: updateError } = await supabase
+                        .from('admins')
+                        .update({ password_hash: btoa(password) })
+                        .eq('id', admin.id);
+                    
+                    if (updateError) {
+                        console.error('خطأ في تحديث كلمة المرور:', updateError);
+                    } else {
+                        console.log('تم تحديث كلمة المرور بنجاح');
+                    }
+                } catch (updateError) {
+                    console.error('خطأ في تحديث كلمة المرور:', updateError);
+                }
+            }
+        } catch (error) {
+            console.error("خطأ في تسجيل دخول المدير:", error);
+            showToast("حدث خطأ أثناء تسجيل الدخول.", 'error');
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function handleParentLogin(e) {
+        e.preventDefault();
+        showLoader();
+        
+        // الحصول على الاسم الأول والثاني فقط
+        const fullName = document.getElementById('player-name-input').value.trim();
+        // الحصول على آخر 4 أرقام من رقم الجوال
+        const lastFourDigits = document.getElementById('player-code-input').value.trim();
+
+        if (!fullName || !lastFourDigits || lastFourDigits.length !== 4) {
+            showToast("يرجى إدخال الاسم الأول والثاني للاعب وآخر 4 أرقام من رقم الجوال.", 'error');
+            hideLoader();
+            return;
+        }
+
+        try {
+            console.log('محاولة تسجيل دخول ولي الأمر:', { fullName, lastFourDigits });
+            
+            // البحث عن اللاعبين الذين يبدأ اسمهم بالاسم الأول والثاني
+            const { data: players, error: playersError } = await supabase
+                .from('players')
+                .select('*')
+                .ilike('name', `${fullName}%`);
+            
+            if (playersError) {
+                throw playersError;
+            }
+            
+            console.log('نتائج البحث عن اللاعبين:', players);
+            
+            if (!players || players.length === 0) {
+                showToast("لم يتم العثور على لاعب بهذا الاسم.", 'error');
+                hideLoader();
+                return;
+            }
+            
+            // البحث عن لاعب له رقم جوال ينتهي بآخر 4 أرقام المدخلة
+            const matchedPlayer = players.find(player => {
+                const phone = player.phone || '';
+                return phone.endsWith(lastFourDigits);
+            });
+            
+            if (!matchedPlayer) {
+                showToast("رقم الجوال غير مطابق لأي لاعب بهذا الاسم.", 'error');
+                hideLoader();
+                return;
+            }
+            
+            console.log('تم العثور على اللاعب:', matchedPlayer);
+            
+            // تعيين بيانات اللاعب الحالي
+            appState.currentPlayer = matchedPlayer;
+            appState.userRole = 'parent';
+            
+            // عرض لوحة تحكم ولي الأمر
+            renderParentDashboard(appState.currentPlayer);
+            showPage('parent-dashboard-page');
+            
+            showToast(`مرحباً بك، ولي أمر ${matchedPlayer.name}`, 'success');
+        } catch (error) {
+            console.error("خطأ في تسجيل دخول ولي الأمر:", error);
+            showToast("حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى.", 'error');
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function logout() {
+        showLoader();
+        
+        // إلغاء الاشتراك في جميع المستمعين
+        appState.unsubscribeListeners.forEach(unsub => unsub());
+        appState.unsubscribeListeners = [];
+        
+        // حذف بيانات المستخدم من التخزين المحلي
+        localStorage.removeItem('currentUser');
+        
+        // إعادة تعيين حالة التطبيق
+        appState = { 
+            currentUser: null, 
+            userData: null, 
+            userRole: null, 
+            currentPlayer: null, 
+            coachPlayers: [], 
+            unsubscribeListeners: [] 
+        };
+        
+        // إعادة تعيين النماذج
+        document.querySelectorAll('form').forEach(form => form.reset());
+        
+        // تدمير الرسوم البيانية
+        if (radarChart) radarChart.destroy();
+        if (progressChart) progressChart.destroy();
+        
+        hideLoader();
+        showPage('role-selection-page');
+        showToast('تم تسجيل الخروج بنجاح', 'success');
+    }
+
+    // --- Admin Dashboard Functions ---
+    async function handleAddCoach(e) {
+        e.preventDefault();
+        const name = document.getElementById('new-coach-name').value.trim();
+        const email = document.getElementById('new-coach-email').value.trim();
+        const password = document.getElementById('new-coach-password').value.trim();
+        const phone = document.getElementById('new-coach-phone').value.trim();
+
+        if (!name || !email || !password) {
+            showToast("يرجى ملء جميع الحقول المطلوبة.", "error");
+            return;
+        }
+        if (password.length < 6) {
+            showToast("يجب أن تكون كلمة المرور 6 أحرف على الأقل.", "error");
+            return;
+        }
+        
+        showLoader();
+        try {
+            // إنشاء حساب المدرب في Supabase
+        
+            const { data: userData, error: userError } = await supabase
+                .from('coaches')
+                .insert([{
+                    name: name,
+                    email: email,
+                    password_hash: btoa(password), // تشفير بسيط لكلمة المرور (Base64)
+                    phone: phone,
+                    role: 'coach',
+                    created_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+            
+            if (userError) throw userError;
+            
+            document.getElementById('add-coach-form').reset();
+            showToast('تمت إضافة المدرب بنجاح!', 'success');
+            
+            // تحديث قائمة المدربين فقط
+            await loadCoachesList();
+        } catch (error) {
+            console.error("Error adding coach:", error);
+            if (error.code === '23505') { // رمز تكرار البيانات في PostgreSQL
+                showToast('هذا البريد الإلكتروني مستخدم بالفعل.', 'error');
+            } else {
+                showToast(`حدث خطأ: ${error.message}`, 'error');
+            }
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    async function handleAddAdmin(e) {
+        e.preventDefault();
+        const name = document.getElementById('new-admin-name').value.trim();
+        const email = document.getElementById('new-admin-email').value.trim();
+        const password = document.getElementById('new-admin-password').value.trim();
+        const phone = document.getElementById('new-admin-phone').value.trim();
+
+        if (!name || !email || !password) {
+            showToast("يرجى ملء جميع الحقول المطلوبة.", "error");
+            return;
+        }
+        if (password.length < 6) {
+            showToast("يجب أن تكون كلمة المرور 6 أحرف على الأقل.", "error");
+            return;
+        }
+        
+        showLoader();
+        
+        try {
+            // تشفير كلمة المرور باستخدام Base64
+            const encodedPassword = btoa(password);
+            console.log('إضافة مدير جديد:', { name, email, passwordLength: password.length, encodedPasswordLength: encodedPassword.length });
+            
+            // إنشاء حساب المدير في Supabase
+            const { data: userData, error: userError } = await supabase
+                .from('admins')
+                .insert([{
+                    name: name,
+                    email: email,
+                    password_hash: encodedPassword, // تشفير بسيط لكلمة المرور (Base64)
+                    phone: phone,
+                    role: 'admin',
+                    created_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+            
+            if (userError) {
+                console.error('خطأ في إضافة المدير:', userError);
+                throw userError;
+            }
+            
+            console.log('تمت إضافة المدير بنجاح:', userData);
+            
+            document.getElementById('add-admin-form').reset();
+            showToast('تمت إضافة المدير بنجاح!', 'success');
+            
+            // عرض معلومات تسجيل الدخول
+            showToast(`يمكن تسجيل الدخول باستخدام: ${email}`, 'info', 5000);
+        } catch (error) {
+            console.error("خطأ في إضافة المدير:", error);
+            if (error.code === '23505') { // رمز تكرار البيانات في PostgreSQL
+                showToast('هذا البريد الإلكتروني مستخدم بالفعل.', 'error');
+            } else {
+                showToast(`حدث خطأ: ${error.message}`, 'error');
+            }
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function handleAdminAddPlayer(e) {
+        e.preventDefault();
+        const nameInput = document.getElementById('admin-new-player-name');
+        const phoneInput = document.getElementById('admin-new-player-phone');
+        const coachSelect = document.getElementById('assign-coach-select');
+        
+        if (!nameInput.value.trim() || !phoneInput.value.trim() || !coachSelect.value) {
+            showToast("يرجى ملء جميع حقول اللاعب واختيار مدرب.", "error");
+            return;
+        }
+        showLoader();
+        
+        const selectedOption = coachSelect.options[coachSelect.selectedIndex];
+        const coachId = selectedOption.value;
+        const coachName = selectedOption.text;
+
+        const newPlayer = await addPlayer(nameInput.value.trim(), phoneInput.value.trim(), coachId, coachName);
+        hideLoader();
+
+        if (newPlayer) {
+            nameInput.value = '';
+            phoneInput.value = '';
+            coachSelect.value = '';
+            showToast(`تم إضافة اللاعب بنجاح. الرمز الخاص به هو: ${newPlayer.access_code}`, 'success', 5000);
+            
+            // تحديث قائمة اللاعبين
+            await loadPlayersList();
+        } else {
+            showToast('فشل إضافة اللاعب.', 'error');
+        }
+    }
+    
+    // دالة تحميل قائمة المدربين من Supabase
+    async function loadCoachesList() {
+        try {
+            const coachListContainer = document.getElementById('admin-coach-list');
+            const coachSelect = document.getElementById('assign-coach-select');
+            
+            // جلب المدربين من Supabase
+            const { data: coaches, error } = await supabase
+                .from('coaches')
+                .select('*')
+                .order('name', { ascending: true });
+            
+            if (error) {
+                console.error('خطأ في جلب المدربين:', error);
+                coachListContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل المدربين.</p>';
+                return;
+            }
+            
+            // مسح المحتوى السابق
+            coachListContainer.innerHTML = '';
+            coachSelect.innerHTML = '<option value="">اختر مدرب...</option>';
+            
+            if (!coaches || coaches.length === 0) {
+                coachListContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد مدربون حالياً.</p>';
+                return;
+            }
+            
+            // عرض المدربين
+            coaches.forEach((coach) => {
+                // إضافة المدرب للقائمة
+                const coachEl = document.createElement('div');
+                coachEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
+                coachEl.dataset.name = coach.name;
+                coachEl.innerHTML = `
+                    <div>
+                        <p class="font-bold">${coach.name}</p>
+                        <p class="text-sm text-muted">${coach.email}</p>
+                        <p class="text-sm text-muted">الهاتف: ${coach.phone || 'غير متوفر'}</p>
+                    </div>
+                    <button data-coach-id="${coach.id}" data-coach-name="${coach.name}" class="delete-coach-btn btn btn-danger text-xs py-1 px-2">حذف</button>
+                `;
+                coachListContainer.appendChild(coachEl);
+
+                // إضافة المدرب لقائمة الاختيار
+                const optionEl = document.createElement('option');
+                optionEl.value = coach.id;
+                optionEl.textContent = coach.name;
+                coachSelect.appendChild(optionEl);
+            });
+            
+            // إضافة مستمعي الأحداث لأزرار الحذف
+            document.querySelectorAll('.delete-coach-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => handleDeleteCoach(e.target.dataset.coachId, e.target.dataset.coachName));
+            });
+            
+        } catch (error) {
+            console.error('خطأ في تحميل المدربين:', error);
+            document.getElementById('admin-coach-list').innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل المدربين.</p>';
+        }
+    }
+    
+    // دالة تحميل قائمة اللاعبين من Supabase
+    async function loadPlayersList() {
+        try {
+            const playerListContainer = document.getElementById('admin-player-list');
+            const whatsappSelect = document.getElementById('admin-whatsapp-select');
+            // جلب اللاعبين بدون join
+            const { data: players, error } = await supabase
+                .from('players')
+                .select('*')
+                .order('name', { ascending: true });
+            // جلب المدربين
+            const { data: coaches } = await supabase
+                .from('coaches')
+                .select('id, name');
+            const coachMap = {};
+            if (coaches) {
+                coaches.forEach(c => { coachMap[c.id] = c.name; });
+            }
+            if (error) {
+                console.error('خطأ في جلب اللاعبين:', error);
+                playerListContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+                return;
+            }
+            
+            // مسح المحتوى السابق
+            playerListContainer.innerHTML = '';
+            whatsappSelect.innerHTML = '<option value="">-- اختر --</option>';
+            if (!players || players.length === 0) {
+                playerListContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون مسجلون في النظام.</p>';
+                return;
+            }
+            players.forEach((player) => {
+                const coachName = player.coach_id && coachMap[player.coach_id] ? coachMap[player.coach_id] : 'غير محدد';
+                // ...existing code for playerEl and buttons...
+                const playerEl = document.createElement('div');
+                playerEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
+                playerEl.dataset.name = player.name;
+                let assignCoachBtn = '';
+                if (!player.coach_id) {
+                    assignCoachBtn = `<button class="assign-coach-btn btn btn-secondary text-xs py-1 px-2" data-player-id="${player.id}">تعيين مدرب</button>`;
+                }
+                playerEl.innerHTML = `
+                    <div>
+                        <p class="font-bold">${player.name}</p>
+                        <p class="text-sm text-muted">المدرب: ${coachName}</p>
+                        <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button data-player-id="${player.id}" class="view-player-btn btn btn-info text-xs py-1 px-2">عرض التقرير</button>
+                        <button data-player-id="${player.id}" data-player-name="${player.name}" class="delete-player-btn btn btn-danger text-xs py-1 px-2">حذف اللاعب</button>
+                        ${assignCoachBtn}
+                    </div>
+                `;
+                playerListContainer.appendChild(playerEl);
+
+                // إضافة اللاعب لقائمة WhatsApp إذا كان لديه رقم هاتف
+                if (player.phone) {
+                    const option = document.createElement('option');
+                    option.value = player.phone;
+                    option.textContent = player.name;
+                    whatsappSelect.appendChild(option);
+                }
+            });
+            
+            // إضافة مستمعي الأحداث
+            playerListContainer.querySelectorAll('.delete-player-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => handleDeletePlayer(e.target.dataset.playerId, e.target.dataset.playerName));
+            });
+            
+            playerListContainer.querySelectorAll('.view-player-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    showLoader();
+                    try {
+                        const playerId = e.target.dataset.playerId;
+                        const { data: player, error } = await supabase
+                            .from('players')
+                            .select('*')
+                            .eq('id', playerId)
+                            .single();
+                        if (error) throw error;
+                        if (player) {
+                            appState.currentPlayer = player;
+                            renderParentDashboard(player, true);
+                            showPage('parent-dashboard-page');
+                        }
+                    } catch (error) {
+                        console.error('خطأ في جلب بيانات اللاعب:', error);
+                        showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    }
+                    hideLoader();
+                });
+            });
+            // إضافة منطق زر تعيين مدرب
+            playerListContainer.querySelectorAll('.assign-coach-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const playerId = e.target.dataset.playerId;
+                    // جلب قائمة المدربين
+                    const { data: coaches, error } = await supabase
+                        .from('coaches')
+                        .select('id, name')
+                        .order('name', { ascending: true });
+                    if (error || !coaches || coaches.length === 0) {
+                        showToast('لا يوجد مدربين متاحين أو حدث خطأ', 'error');
+                        return;
+                    }
+                    // إنشاء نافذة اختيار
+                    const select = document.createElement('select');
+                    select.className = 'border rounded p-2 my-2';
+                    select.innerHTML = '<option value="">اختر مدرب...</option>' + coaches.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                    const modal = document.createElement('div');
+                    modal.className = 'modal-backdrop';
+                    modal.innerHTML = `<div class="modal-content"><h3 class="mb-4">تعيين مدرب للاعب</h3></div>`;
+                    modal.querySelector('.modal-content').appendChild(select);
+                    const confirmBtn = document.createElement('button');
+                    confirmBtn.className = 'btn btn-primary mt-4';
+                    confirmBtn.textContent = 'تعيين';
+                    modal.querySelector('.modal-content').appendChild(confirmBtn);
+                    const cancelBtn = document.createElement('button');
+                    cancelBtn.className = 'btn btn-neutral mt-4 ml-2';
+                    cancelBtn.textContent = 'إلغاء';
+                    modal.querySelector('.modal-content').appendChild(cancelBtn);
+                    document.body.appendChild(modal);
+                    confirmBtn.onclick = async () => {
+                        const coachId = select.value;
+                        if (!coachId) {
+                            showToast('يرجى اختيار مدرب', 'info');
+                            return;
+                        }
+                        showLoader();
+                        const { error: updateError } = await supabase
+                            .from('players')
+                            .update({ coach_id: coachId })
+                            .eq('id', playerId);
+                        hideLoader();
+                        if (updateError) {
+                            showToast('فشل التعيين', 'error');
+                        } else {
+                            showToast('تم تعيين المدرب بنجاح', 'success');
+                            await loadPlayersList();
+                        }
+                        document.body.removeChild(modal);
+                    };
+                    cancelBtn.onclick = () => {
+                        document.body.removeChild(modal);
+                    };
+                });
+            });
+        } catch (error) {
+            console.error('خطأ في تحميل اللاعبين:', error);
+            document.getElementById('admin-player-list').innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+        }
+    }
+    
+    async function renderAdminDashboard() {
+        renderAnnouncementsList('admin');
+        // Render Coaches List and populate dropdown using Supabase
+        await loadCoachesList();
+        await loadPlayersList();
+    }
+
+    function handleDeleteCoach(coachId, coachName) {
+        showConfirmation(
+            `حذف المدرب ${coachName}`,
+            "سيتم حذف سجل المدرب من قاعدة البيانات نهائياً. هل أنت متأكد؟",
+            async () => {
+                showLoader();
+                try {
+                    // حذف المدرب من Supabase
+                    const { error } = await supabase
+                        .from('coaches')
+                        .delete()
+                        .eq('id', coachId);
+                    
+                    if (error) throw error;
+                    
+                    showToast(`تم حذف المدرب ${coachName} بنجاح.`, 'success');
+                    
+                    // تحديث قائمة المدربين
+                    await loadCoachesList();
+                } catch (error) {
+                    console.error("Error deleting coach:", error);
+                    showToast("فشل حذف المدرب.", 'error');
+                } finally {
+                    hideLoader();
+                }
+            }
+        );
+    }
+
+
+    // --- Coach Dashboard Functions ---
+    async function addPlayer(playerName, playerPhone, coachId, coachName) {
+        if (playerName && playerPhone && coachId) {
+            try {
+                const now = new Date();
+                const created_at = now.toISOString();
+                const expiry_date = new Date(now.getTime() + 30*24*60*60*1000).toISOString().slice(0,10);
+                let category = 'baraem';
+                const categoryInput = document.getElementById('new-player-category');
+                if (categoryInput && categoryInput.value) {
+                    category = categoryInput.value;
+                }
+                const newPlayer = {
+                    name: playerName,
+                    phone: playerPhone,
+                    category: category,
+                    created_at: created_at,
+                    expiry_date: expiry_date,
+                    coach_id: coachId
+                };
+                const { data, error } = await supabase
+                    .from('players')
+                    .insert([newPlayer])
+                    .select()
+                    .single();
+                if (error) {
+                    showToast('فشل إضافة اللاعب: ' + (error.message || error.details || error), 'error', 6000);
+                    return null;
+                }
+                return data;
+            } catch (error) {
+                showToast('فشل إضافة اللاعب: ' + error.message, 'error', 6000);
+                return null;
+            }
+        }
+        showToast('يرجى ملء جميع الحقول المطلوبة واختيار مدرب.', 'error');
+        return null;
+    }
+
+    async function handleCoachAddPlayer(e) {
+        e.preventDefault();
+        const nameInput = document.getElementById('new-player-name');
+        const phoneInput = document.getElementById('new-player-phone');
+        
+        if (!nameInput.value.trim() || !phoneInput.value.trim()) {
+            showToast("يرجى ملء جميع الحقول.", "error");
+            return;
+        }
+        showLoader();
+        const newPlayer = await addPlayer(nameInput.value.trim(), phoneInput.value.trim(), appState.currentUser.id, appState.currentUser.name);
+        hideLoader();
+
+        if (newPlayer) {
+            nameInput.value = '';
+            phoneInput.value = '';
+            showToast(`تم إضافة اللاعب بنجاح. الرمز الخاص به هو: ${newPlayer.access_code}`, 'success', 5000);
+            
+            // تحديث قائمة اللاعبين
+            await loadCoachPlayers();
+        } else {
+            showToast('فشل إضافة اللاعب.', 'error');
+        }
+    }
+
+    function handleDeletePlayer(playerId, playerName) {
+         showConfirmation(
+            `حذف اللاعب ${playerName}`,
+            "هل أنت متأكد من رغبتك في حذف هذا اللاعب وجميع بياناته؟ لا يمكن التراجع عن هذا الإجراء.",
+            async () => {
+                showLoader();
+                try {
+                    // حذف اللاعب من Supabase
+                    const { error: playerError } = await supabase
+                        .from('players')
+                        .delete()
+                        .eq('id', playerId);
+                    
+                    if (playerError) throw playerError;
+                    
+                    // حذف سجل ولي الأمر المرتبط
+                    const { error: parentError } = await supabase
+                        .from('parents')
+                        .delete()
+                        .eq('player_name', playerName);
+                    
+                    if (parentError) {
+                        console.error("Error deleting parent record:", parentError);
+                        // لا نوقف العملية إذا فشل حذف ولي الأمر
+                    }
+                    
+                    // حذف سجلات الحضور المرتبطة
+                    const { error: attendanceError } = await supabase
+                        .from('attendance')
+                        .delete()
+                        .eq('player_id', playerId);
+                    
+                    if (attendanceError) {
+                        console.error("Error deleting attendance records:", attendanceError);
+                        // لا نوقف العملية إذا فشل حذف الحضور
+                    }
+                    
+                    showToast(`تم حذف اللاعب ${playerName} وجميع بياناته.`, 'success');
+                    
+                    // تحديث القوائم حسب الصفحة الحالية
+                    if (appState.userRole === 'coach') {
+                        await loadCoachPlayers();
+                    } else if (appState.userRole === 'admin') {
+                        await loadPlayersList();
+                    }
+                } catch (error) {
+                    console.error("Error deleting player:", error);
+                    showToast("فشل حذف اللاعب.", 'error');
+                } finally {
+                    hideLoader();
+                }
+            }
+        );
+    }
+    
+    async function renderCoachDashboard() {
+        renderScheduleForm();
+        document.getElementById('coach-name-display').textContent = appState.currentUser.name;
+        
+        document.getElementById('attendance-date').valueAsDate = new Date();
+        
+        await loadCoachPlayers();
+    }
+
+    // دالة تحميل لاعبي المدرب من Supabase
+    async function loadCoachPlayers() {
+        try {
+            const listContainer = document.getElementById('coach-player-list');
+            const whatsappSelect = document.getElementById('coach-whatsapp-select');
+            
+            if (!appState.currentUser) return;
+            
+            // جلب لاعبي المدرب من Supabase
+            const { data: players, error } = await supabase
+                .from('players')
+                .select('*')
+                .eq('coach_id', appState.currentUser.id)
+                .order('name', { ascending: true });
+            
+            if (error) {
+                console.error('خطأ في جلب لاعبي المدرب:', error);
+                listContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+                return;
+            }
+            
+            // مسح المحتوى السابق
+            listContainer.innerHTML = '';
+            whatsappSelect.innerHTML = '<option value="">-- اختر --</option>';
+            appState.coachPlayers = []; // إعادة تعيين قائمة اللاعبين
+            
+            if (!players || players.length === 0) {
+                listContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون حالياً. قم بإضافة لاعب جديد.</p>';
+                renderAttendanceSheet(); // عرض ورقة حضور فارغة
+                return;
+            }
+            
+            appState.coachPlayers = players; // حفظ اللاعبين للحضور
+            renderAttendanceSheet(); // إعادة عرض ورقة الحضور مع اللاعبين
+            
+            // عرض اللاعبين
+            players.forEach((player) => {
+                // إضافة اللاعب للقائمة
+                const playerEl = document.createElement('div');
+                playerEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
+                playerEl.dataset.name = player.name;
+                playerEl.innerHTML = `
+                    <div>
+                        <p class="font-bold">${player.name}</p>
+                        <p class="text-sm text-muted">الرمز: ${player.access_code}</p>
+                        <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button data-player-id="${player.id}" class="view-player-btn btn btn-info text-xs py-1 px-2">عرض</button>
+                        <button data-player-id="${player.id}" class="add-evaluation-btn btn btn-primary text-xs py-1 px-2">تقييم</button>
+                        <button data-player-id="${player.id}" data-player-name="${player.name}" class="delete-player-btn btn btn-danger text-xs py-1 px-2">حذف</button>
+                    </div>
+                `;
+                listContainer.appendChild(playerEl);
+
+                // إضافة اللاعب لقائمة WhatsApp إذا كان لديه رقم هاتف
+                if (player.phone) {
+                    const option = document.createElement('option');
+                    option.value = player.phone;
+                    option.textContent = player.name;
+                    whatsappSelect.appendChild(option);
+                }
+            });
+
+            // إضافة مستمعي الأحداث
+            listContainer.querySelectorAll('.add-evaluation-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => showEvaluationModal(e.target.dataset.playerId));
+            });
+            
+            listContainer.querySelectorAll('.delete-player-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => handleDeletePlayer(e.target.dataset.playerId, e.target.dataset.playerName));
+            });
+            
+            listContainer.querySelectorAll('.view-player-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    showLoader();
+                    try {
+                        const playerId = e.target.dataset.playerId;
+                        const { data: player, error } = await supabase
+                            .from('players')
+                            .select('*')
+                            .eq('id', playerId)
+                            .single();
+                        
+                        if (error) throw error;
+                        
+                        if (player) {
+                            appState.currentPlayer = player;
+                            renderParentDashboard(player, true);
+                            showPage('parent-dashboard-page');
+                        }
+                    } catch (error) {
+                        console.error('خطأ في جلب بيانات اللاعب:', error);
+                        showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    }
+                    hideLoader();
+                });
+            });
+            
+        } catch (error) {
+            console.error('خطأ في تحميل لاعبي المدرب:', error);
+            document.getElementById('coach-player-list').innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+        }
+    }
+
+    async function showEvaluationModal(playerId) {
+
+        showLoader();
+        const { data: player, error } = await supabase
+            .from('players')
+            .select('*')
+            .eq('id', playerId)
+            .single();
+        hideLoader();
+        if (error || !player) {
+            showToast("لم يتم العثور على اللاعب.", "error");
+            return;
+        }
+
+        document.getElementById('eval-player-name').textContent = player.name;
+        document.getElementById('eval-player-id').value = playerId;
+        document.getElementById('eval-date').valueAsDate = new Date();
+        
+        const slidersContainer = document.getElementById('skill-sliders-container');
+        slidersContainer.innerHTML = '';
+        Object.keys(SKILLS).forEach(key => {
+            slidersContainer.innerHTML += `
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label for="eval-skill-${key}" class="block text-sm font-medium">${SKILLS[key]}</label>
+                        <span id="slider-value-${key}" class="text-sm font-bold" style="color: var(--primary-color);">3</span>
+                    </div>
+                    <input type="range" id="eval-skill-${key}" min="1" max="5" value="3" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" style="accent-color: var(--primary-color);">
+                </div>
+            `;
+        });
+        
+        Object.keys(SKILLS).forEach(key => {
+            const slider = document.getElementById(`eval-skill-${key}`);
+            const display = document.getElementById(`slider-value-${key}`);
+            slider.addEventListener('input', () => { display.textContent = slider.value; });
+        });
+
+        document.getElementById('evaluation-modal').classList.remove('hidden');
+    }
+
+    async function handlePrintPDF() {
+        if (!appState.currentPlayer) {
+            showToast("يرجى اختيار لاعب أولاً", "error");
+            return;
+        }
+        
+        showLoader();
+        try {
+            // إنشاء محتوى PDF
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // إضافة اللغة العربية
+            doc.setFont("amiri");
+            
+            // إضافة العنوان
+            doc.setFontSize(20);
+            doc.text("تقرير تقييم اللاعب", 105, 15, { align: "center" });
+            
+            // إضافة معلومات اللاعب
+            doc.setFontSize(16);
+            doc.text(`الاسم: ${appState.currentPlayer.name}`, 20, 30);
+            doc.text(`الفئة: ${appState.currentPlayer.category || "غير محددة"}`, 20, 45);
+            doc.text(`تاريخ التقييم: ${new Date().toLocaleDateString("ar-EG")}`, 20, 60);
+            
+            // إضافة التقييمات الحالية
+            if (appState.currentPlayer.evaluations && appState.currentPlayer.evaluations.length > 0) {
+                const latestEval = appState.currentPlayer.evaluations[appState.currentPlayer.evaluations.length - 1];
+                
+                doc.setFontSize(14);
+                doc.text("التقييم الحالي:", 20, 80);
+                
+                doc.setFontSize(12);
+                let yPos = 95;
+                
+                // إضافة درجات المهارات
+                const skills = Object.keys(latestEval.scores || {});
+                skills.forEach(skill => {
+                    doc.text(`${skill}: ${latestEval.scores[skill]}`, 30, yPos);
+                    yPos += 15;
+                });
+                
+                // إضافة الملاحظات
+                if (latestEval.notes) {
+                    yPos += 10;
+                    doc.text("ملاحظات المدرب:", 20, yPos);
+                    yPos += 15;
+                    
+                    // تقسيم النص الطويل إلى أسطر متعددة
+                    const splitNotes = doc.splitTextToSize(latestEval.notes, 160);
+                    doc.text(splitNotes, 30, yPos);
+                }
+            } else {
+                doc.setFontSize(14);
+                doc.text("لا يوجد تقييمات مسجلة لللاعب", 20, 80);
+            }
+            
+            // حفظ وطباعة PDF
+            doc.save(`تقرير_تقييم_${appState.currentPlayer.name}_${new Date().toLocaleDateString("ar-EG")}.pdf`);
+            
+            showToast("تم حفظ تقرير PDF بنجاح", "success");
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            showToast("فشل في إنشاء تقرير PDF", "error");
+        } finally {
+            hideLoader();
+        }
+    }
+    
+    async function handleSaveEvaluation(e) {
+        e.preventDefault();
+        showLoader();
+        const playerId = document.getElementById('eval-player-id').value;
+        if (playerId) {
+            const newEval = {
+                date: document.getElementById('eval-date').value,
+                scores: {},
+                notes: document.getElementById('eval-notes').value,
+                coach_id: appState.currentUser.id,
+                coach_name: appState.userData.name,
+                player_id: playerId,
+                created_at: new Date().toISOString()
+            };
+            Object.keys(SKILLS).forEach(key => {
+                newEval.scores[key] = parseInt(document.getElementById(`eval-skill-${key}`).value, 10);
+            });
+            // إضافة التقييم إلى جدول evaluations في Supabase
+            const { error } = await supabase
+                .from('evaluations')
+                .insert([{
+                    player_id: newEval.player_id,
+                    coach_id: newEval.coach_id,
+                    coach_name: newEval.coach_name,
+                    date: newEval.date,
+                    scores: newEval.scores,
+                    notes: newEval.notes,
+                    created_at: newEval.created_at
+                }]);
+            if (error) {
+                showToast("حدث خطأ أثناء حفظ التقييم.", "error");
+            } else {
+                document.getElementById('evaluation-modal').classList.add('hidden');
+                document.getElementById('evaluation-form').reset();
+                showToast("تم حفظ التقييم بنجاح.", "success");
+            }
+        }
+        hideLoader();
+    }
+
+    async function renderScheduleForm() {
+        const form = document.getElementById('schedule-form');
+        form.innerHTML = ''; // Clear previous
+
+        if (!appState.currentUser) return;
+
+        showLoader();
+        try {
+            const { data: scheduleData, error } = await supabase
+                .from('schedules')
+                .select('*')
+                .eq('coach_id', appState.currentUser.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+                throw error;
+            }
+
+            Object.keys(DAYS_OF_WEEK).forEach(day => {
+                form.innerHTML += `
+                    <div>
+                        <label for="schedule-${day}" class="block text-sm font-medium">${DAYS_OF_WEEK[day]}</label>
+                        <input type="text" id="schedule-${day}" value="${scheduleData && scheduleData[day] ? scheduleData[day] : ''}" placeholder="مثال: 4:00م - 6:00م" class="mt-1 block w-full px-3 py-2 border border-form rounded-md focus-ring dark:bg-gray-700 dark:text-gray-200">
+                    </div>
+                `;
+            });
+        } catch (error) {
+            console.error("Error loading schedule:", error);
+            form.innerHTML = '<p class="text-red-500 text-center">حدث خطأ في تحميل الجدول.</p>';
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function handleSaveSchedule() {
+        if (!appState.currentUser) return;
+
+        showLoader();
+        const scheduleData = {
+            coach_id: appState.currentUser.id
+        };
+        Object.keys(DAYS_OF_WEEK).forEach(day => {
+            scheduleData[day] = document.getElementById(`schedule-${day}`).value.trim();
+        });
+
+        try {
+            const { error } = await supabase
+                .from('schedules')
+                .upsert(scheduleData, { onConflict: 'coach_id' });
+
+            if (error) {
+                throw error;
+            }
+            showToast("تم حفظ الجدول بنجاح.", "success");
+        } catch (error) {
+            console.error("Error saving schedule:", error);
+            showToast("حدث خطأ أثناء حفظ الجدول.", "error");
+        } finally {
+            hideLoader();
+        }
+    }
+
+    
+
+    // وظيفة مساعدة للحصول على اسم الفئة
+    function getCategoryName(categoryCode) {
+        const categories = {
+            'kids': 'أطفال',
+            'baraem': 'براعم',
+            'nash': 'ناشئين',
+            'shabab': 'شباب'
+        };
+        return categories[categoryCode] || categoryCode;
+    }
+
+    // تحميل جدول المدرب من Supabase
+    async function loadScheduleFromSupabase(coachId) {
+        const container = document.getElementById('parent-schedule-view');
+        try {
+            const { data, error } = await supabase
+                .from('schedules')
+                .select('*')
+                .eq('coach_id', coachId)
+                .single();
+            
+            if (error) {
+                throw error;
+            }
+            
+            if (data) {
+                container.innerHTML = Object.keys(DAYS_OF_WEEK).map(day => `
+                    <div class="flex justify-between items-center p-2 rounded ${data[day] ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-50 dark:bg-gray-700/20'}">
+                        <span class="font-bold">${DAYS_OF_WEEK[day]}</span>
+                        <span class="text-muted">${data[day] || 'راحة'}</span>
+                    </div>
+                `).join('');
+            } else {
+                container.innerHTML = '<p class="text-muted text-center">لم يقم المدرب بوضع جدول حتى الآن.</p>';
+            }
+        } catch (error) {
+            console.error("Error loading schedule:", error);
+            container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل الجدول.</p>';
+        }
+    }
+    
+    // تحميل سجل الحضور من Supabase
+    async function loadAttendanceFromSupabase(playerId) {
+        const container = document.getElementById('parent-attendance-view');
+        try {
+            const { data, error } = await supabase
+                .from('attendance')
+                .select('*')
+                .eq('player_id', playerId)
+                .order('date', { ascending: false })
+                .limit(10);
+            
+            if (error) {
+                throw error;
+            }
+            
+            if (data && data.length > 0) {
+                container.innerHTML = `
+                    <div class="space-y-2">
+                        ${data.map(record => `
+                            <div class="flex justify-between items-center p-2 rounded ${record.present ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}">
+                                <span class="font-bold">${new Date(record.date).toLocaleDateString('ar-EG')}</span>
+                                <span class="${record.present ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+                                    ${record.present ? 'حاضر' : 'غائب'}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                container.innerHTML = '<p class="text-muted text-center">لا يوجد سجل حضور حتى الآن.</p>';
+            }
+        } catch (error) {
+            console.error("Error loading attendance:", error);
+            container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل سجل الحضور.</p>';
+        }
+    }
+    
+    // تحميل الإعلانات من Supabase
+    async function loadAnnouncementsFromSupabase() {
+        const container = document.getElementById('announcements-view'); // Corrected ID
+        const section = document.getElementById('announcements-section');
+        try {
+            const { data, error } = await supabase
+                .from('announcements')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5);
+            
+            if (error) {
+                throw error;
+            }
+            
+            if (data && data.length > 0) {
+                section.classList.remove('hidden'); // Show the section
+                container.innerHTML = `
+                    <div class="space-y-4">
+                        ${data.map(announcement => `
+                            <div class="bg-card p-4 rounded-lg shadow-sm">
+                                <p class="text-sm">${announcement.content}</p>
+                                <p class="text-xs text-muted mt-2">${new Date(announcement.created_at).toLocaleDateString('ar-SA')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                section.classList.add('hidden'); // Hide the section
+                container.innerHTML = '<p class="text-muted text-center">لا توجد إعلانات حتى الآن.</p>';
+            }
+        } catch (error) {
+            console.error("Error loading announcements:", error);
+            if(container) container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل الإعلانات.</p>';
+        }
+    }
+    
+    // الوظيفة القديمة للتوافق مع الكود الحالي
+    async function loadAndRenderSchedule(coachId) {
+        await loadScheduleFromSupabase(coachId);
+    }
+
+    // --- Parent Dashboard Functions ---
+    async function renderParentDashboard(player, isCoachOrAdminViewing = false) {
+        const titleEl = document.getElementById('parent-dashboard-title');
+        const actionsContainer = document.getElementById('parent-dashboard-actions');
+        
+        // Clear previous buttons to avoid duplicate listeners
+        actionsContainer.innerHTML = ''; 
+
+        const logoutBtn = document.createElement('button');
+        logoutBtn.className = 'btn btn-danger';
+        
+        actionsContainer.appendChild(logoutBtn);
+        
+        const medicalNotesForm = document.getElementById('medical-notes-form');
+
+        if (isCoachOrAdminViewing) {
+            titleEl.textContent = `عرض تقرير اللاعب: ${player.name}`;
+            logoutBtn.textContent = 'العودة للوحة التحكم';
+            logoutBtn.addEventListener('click', () => {
+                const role = appState.userRole;
+                appState.currentPlayer = null;
+                showPage(`${role}-dashboard-page`);
+            });
+            medicalNotesForm.classList.add('hidden');
+        } else {
+            titleEl.textContent = 'لوحة متابعة أداء اللاعب';
+            logoutBtn.textContent = 'تسجيل الخروج';
+            logoutBtn.addEventListener('click', logout);
+            medicalNotesForm.classList.remove('hidden');
+        }
+
+        // عرض معلومات اللاعب
+        document.getElementById('parent-player-info').innerHTML = `
+            <div class="bg-card p-4 rounded-lg shadow-sm">
+                <h3 class="text-lg font-bold mb-2">${player.name}</h3>
+                <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
+                <p class="text-sm text-muted">تاريخ الانتهاء: ${player.expiryDate || 'غير محدد'}</p>
+            </div>
+        `;
+
+        try {
+            // جلب بيانات المدرب
+            let coachId = player.coach_id;
+            if (coachId) {
+                const { data: coach, error: coachError } = await supabase
+                    .from('coaches')
+                    .select('*')
+                    .eq('id', coachId)
+                    .single();
+                if (!coachError && coach) {
+                    document.getElementById('parent-coach-info').innerHTML = `
+                        <div class="bg-card p-4 rounded-lg shadow-sm">
+                            <h3 class="text-lg font-bold mb-2">المدرب: ${coach.name}</h3>
+                            <p class="text-sm text-muted">البريد الإلكتروني: ${coach.email}</p>
+                            <p class="text-sm text-muted">الهاتف: ${coach.phone || 'غير متوفر'}</p>
+                        </div>
+                    `;
+                    await loadScheduleFromSupabase(coachId);
+                }
+            }
+            await loadAttendanceFromSupabase(player.id);
+            await loadAnnouncementsFromSupabase();
+            document.getElementById('medical-notes-input').value = player.medical_notes || '';
+        } catch (error) {
+            console.error("Error loading player dashboard data:", error);
+            showToast("حدث خطأ أثناء تحميل بيانات اللاعب", "error");
+        }
+
+        // جلب التقييمات من Supabase
+        try {
+            const { data: evaluations, error: evalError } = await supabase
+                .from('evaluations')
+                .select('*')
+                .eq('player_id', player.id)
+                .order('date', { ascending: true });
+            if (evalError) throw evalError;
+            player.evaluations = evaluations || [];
+            appState.currentPlayer = player;
+
+            const snapshotContent = document.getElementById('player-snapshot-content');
+            const noDataView = document.getElementById('no-data-view');
+            const skillsGrid = document.getElementById('skills-grid');
+
+            if (!player.evaluations || player.evaluations.length === 0) {
+                snapshotContent.innerHTML = '';
+                skillsGrid.innerHTML = '';
+                snapshotContent.classList.add('hidden');
+                noDataView.classList.remove('hidden');
+                if (progressChart) progressChart.destroy();
+                document.getElementById('skill-filters').innerHTML = '';
+                return;
+            }
+
+            snapshotContent.classList.remove('hidden');
+            noDataView.classList.add('hidden');
+
+            renderPlayerInfoAndRadar(player);
+            populateSkillCards(player);
+            renderProgressChart(player);
+        } catch (error) {
+            console.error("Error fetching evaluations:", error);
+            showToast("خطأ في تحميل بيانات التقييم.", "error");
+        }
+    }
+    
+    function renderPlayerInfoAndRadar(playerData) {
+        const container = document.getElementById('player-snapshot-content');
+        const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
+        const avatarSrc = `https://ui-avatars.com/api/?name=${encodeURIComponent(playerData.name)}&background=8E44AD&color=fff&size=128`;
+
+        container.innerHTML = `
+            <div id="player-info" class="text-center md:text-right">
+                <img id="player-avatar" src="${avatarSrc}" alt="صورة اللاعب" class="w-32 h-32 rounded-full object-cover mx-auto md:mx-0 mb-4 border-4" style="border-color: var(--primary-color);">
+                <h3 class="text-2xl font-bold">${playerData.name}</h3>
+                <p class="text-muted mt-1">المدرب: ${playerData.coachName || 'غير محدد'}</p>
+                 <p class="text-muted mt-1">آخر تحديث للتقييم: ${new Date(latestEval.date).toLocaleDateString('ar-EG')}</p>
+            </div>
+            <div class="chart-container"><canvas id="radarChart"></canvas></div>
+        `;
+
+        if (radarChart) radarChart.destroy();
+        createRadarChart(playerData);
+    }
+
+    function createRadarChart(playerData) {
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
+        const isDarkMode = document.documentElement.classList.contains('dark');
+        const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
+        const pointLabelColor = isDarkMode ? '#ECF0F1' : '#34495E';
+
+        radarChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: Object.values(SKILLS),
+                datasets: [{
+                    label: `تقييم ${latestEval.date}`,
+                    data: Object.keys(SKILLS).map(key => latestEval.scores[key] || 0),
+                    backgroundColor: 'rgba(142, 68, 173, 0.2)',
+                    borderColor: 'rgba(142, 68, 173, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgba(142, 68, 173, 1)',
+                }]
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { display: false } },
+                scales: { 
+                    r: { 
+                        angleLines: { color: gridColor },
+                        grid: { color: gridColor },
+                        pointLabels: { font: { size: 12, family: 'Tajawal' }, color: pointLabelColor },
+                        suggestedMin: 0, suggestedMax: 5, 
+                        ticks: { stepSize: 1, backdropColor: 'transparent', color: pointLabelColor } 
+                    } 
+                } 
+            }
+        });
+    }
+    
+    function populateSkillCards(playerData) {
+        const skillsGrid = document.getElementById('skills-grid');
+        skillsGrid.innerHTML = '';
+        const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
+
+        Object.keys(SKILLS).forEach(key => {
+            const score = latestEval.scores[key] || 0;
+            skillsGrid.innerHTML += `
+                <div class="bg-card p-5 rounded-xl shadow-md transition-shadow hover:shadow-lg">
+                    <div class="flex items-center mb-3">
+                        <span class="text-3xl ml-3">${SKILL_ICONS[key]}</span>
+                        <h3 class="text-xl font-bold">${SKILLS[key]}</h3>
+                    </div>
+                    <div class="text-lg mb-3">${generateStars(score)}</div>
+                </div>`;
+        });
+        skillsGrid.innerHTML += `
+            <div class="text-white p-5 rounded-xl shadow-md sm:col-span-2 lg:col-span-4" style="background: linear-gradient(135deg, var(--secondary-color), #4A69BD);">
+                <h3 class="text-xl font-bold mb-2">ملاحظات المدرب الأخيرة</h3>
+                <p class="opacity-90">${latestEval.notes || "لا توجد ملاحظات جديدة."}</p>
+            </div>`;
+    }
+    
+    function generateStars(score) {
+        let stars = '';
+        for (let i = 1; i <= 5; i++) {
+            stars += `<span class="${i <= score ? 'star-rating' : 'star-rating-empty'} text-2xl">${i <= score ? '★' : '☆'}</span>`;
+        }
+        return stars;
+    }
+
+    function renderProgressChart(playerData) {
+        populateSkillFilters();
+        if (progressChart) {
+            progressChart.destroy();
+            progressChart = null;
+        }
+        if (playerData.evaluations && playerData.evaluations.length > 0) {
+            createProgressChart(playerData);
+            updateProgressChart();
+        }
+    }
+
+    function populateSkillFilters() {
+        const container = document.getElementById('skill-filters');
+        container.innerHTML = '';
+        Object.keys(SKILLS).forEach(key => {
+            container.innerHTML += `
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="skill-filter form-checkbox h-5 w-5 rounded focus-ring" data-skill="${key}" checked>
+                    <span>${SKILLS[key]}</span>
+                </label>`;
+        });
+        document.querySelectorAll('.skill-filter').forEach(el => el.addEventListener('change', updateProgressChart));
+    }
+
+    function createProgressChart(playerData) {
+        const ctx = document.getElementById('progressChart').getContext('2d');
+        const isDarkMode = document.documentElement.classList.contains('dark');
+        const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
+        const ticksColor = isDarkMode ? '#ECF0F1' : '#34495E';
+        const colors = {
+            passing: '#3b82f6', shooting: '#ef4444', dribbling: '#f59e0b', 
+            fitness: '#22c55e', discipline: '#8b5cf6', tactics: '#6366f1',
+            teamwork: '#ec4899', sportsmanship: '#10b981'
+        };
+        progressChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: playerData.evaluations.map(e => new Date(e.date).toLocaleDateString('ar-EG')),
+                datasets: Object.keys(SKILLS).map(key => ({
+                    label: SKILLS[key],
+                    data: playerData.evaluations.map(e => e.scores[key] || 0),
+                    borderColor: colors[key],
+                    backgroundColor: `${colors[key]}33`,
+                    borderWidth: 2, fill: false, tension: 0.2,
+                    pointRadius: 4, pointBackgroundColor: colors[key]
+                }))
+            },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                scales: { 
+                    y: { 
+                        beginAtZero: true, max: 5.5, 
+                        ticks: { stepSize: 1, color: ticksColor },
+                        grid: { color: gridColor }
+                    },
+                    x: { 
+                        grid: { display: false },
+                        ticks: { color: ticksColor }
+                    }
+                },
+                plugins: { 
+                    legend: { display: false }, 
+                    tooltip: { 
+                        mode: 'index', intersect: false,
+                        bodyFont: { family: 'Tajawal' },
+                        titleFont: { family: 'Tajawal' }
+                    } 
+                },
+                interaction: { intersect: false, mode: 'index' },
+            }
+        });
+    }
+
+    function updateProgressChart() {
+        if (!progressChart) return;
+        const activeSkills = Array.from(document.querySelectorAll('.skill-filter:checked')).map(el => el.dataset.skill);
+        progressChart.data.datasets.forEach(dataset => {
+            const skillKey = Object.keys(SKILLS).find(key => SKILLS[key] === dataset.label);
+            dataset.hidden = !activeSkills.includes(skillKey);
+        });
+        progressChart.update();
+    }
+    
+    function handleWhatsAppRedirect() {
+        const role = appState.userRole;
+        const selectId = role === 'admin' ? 'admin-whatsapp-select' : 'coach-whatsapp-select';
+        const phone = document.getElementById(selectId).value;
+        if (phone) {
+            window.open(`https://wa.me/${phone}`, '_blank');
+        } else {
+            showToast('يرجى اختيار لاعب أولاً.', 'info');
+        }
+    }
+
+    async function handleSaveMedicalNotes(e) {
+        e.preventDefault();
+        if (!appState.currentPlayer) return;
+        
+        const notes = document.getElementById('medical-notes-input').value.trim();
+        showLoader();
+        try {
+            const { error } = await supabase
+                .from('players')
+                .update({ medical_notes: notes })
+                .eq('id', appState.currentPlayer.id);
+
+            if (error) {
+                throw error;
+            }
+            showToast("تم حفظ الملاحظات الطبية بنجاح.", "success");
+            
+            // Refetch player data and re-render dashboard
+            const { data: updatedPlayer, error: fetchError } = await supabase
+                .from('players')
+                .select('*')
+                .eq('id', appState.currentPlayer.id)
+                .single();
+            
+            if (fetchError) {
+                throw fetchError;
+            }
+            
+            appState.currentPlayer = updatedPlayer;
+            renderParentDashboard(updatedPlayer);
+
+        } catch (error) {
+            console.error("Error saving medical notes:", error);
+            showToast("فشل حفظ الملاحظات.", "error");
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function loadAndRenderAnnouncements() {
+        const container = document.getElementById('announcements-view');
+        const section = document.getElementById('announcements-section');
+        const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(5));
+        
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (snapshot.empty) {
+                section.classList.add('hidden');
+                return;
+            }
+            section.classList.remove('hidden');
+            container.innerHTML = '';
+            snapshot.forEach(docSnap => {
+                const ann = docSnap.data();
+                const date = ann.createdAt?.toDate().toLocaleDateString('ar-EG') || '';
+                container.innerHTML += `
+                    <div class="p-3 bg-blue-50 dark:bg-blue-900/20 border-r-4 border-blue-400 rounded">
+                        <p class="font-semibold">${ann.text}</p>
+                        <p class="text-xs text-muted text-left mt-1">${ann.authorName} - ${date}</p>
+                    </div>
+                `;
+            });
+        });
+        appState.unsubscribeListeners.push(unsubscribe);
+    }
+
+    async function handleSaveAnnouncement(e) {
+        e.preventDefault();
+        const content = document.getElementById('admin-announcement-text').value.trim();
+        if (!content) {
+            showToast("يرجى كتابة نص الإعلان.", "info");
+            return;
+        }
+        showLoader();
+        try {
+            const { data, error } = await supabase
+                .from('announcements')
+                .insert([{ content: content, created_at: new Date().toISOString() }]);
+
+            if (error) {
+                throw error;
+            }
+
+            document.getElementById('admin-announcement-form').reset();
+            showToast('تم نشر الإعلان بنجاح', 'success');
+            renderAnnouncementsList('admin'); // Refresh the list
+        } catch (error) {
+            console.error("Error adding announcement: ", error);
+            showToast('فشل نشر الإعلان', 'error');
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function renderAnnouncementsList(role) {
+        const containerId = `${role}-announcements-list`;
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        try {
+            const { data: announcements, error } = await supabase
+                .from('announcements')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(5);
+
+            if (error) {
+                throw error;
+            }
+
+            container.innerHTML = '';
+            if (!announcements || announcements.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center p-4">لا توجد إعلانات حالياً.</p>';
+                return;
+            }
+
+            announcements.forEach((announcement) => {
+                const el = document.createElement('div');
+                el.className = 'list-item p-3 rounded-lg';
+                el.innerHTML = `
+                    <p class="font-bold">${announcement.content}</p>
+                    <div class="text-xs text-muted mt-1">
+                        <span>${new Date(announcement.created_at).toLocaleString()}</span>
+                        ${role === 'admin' ? `<button data-id="${announcement.id}" class="delete-announcement-btn text-red-500 mr-2">حذف</button>` : ''}
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+
+            if (role === 'admin') {
+                document.querySelectorAll('.delete-announcement-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const docId = e.target.dataset.id;
+                        showConfirmation('حذف الإعلان', 'هل أنت متأكد من حذف هذا الإعلان؟', async () => {
+                            const { error } = await supabase
+                                .from('announcements')
+                                .delete()
+                                .eq('id', docId);
+
+                            if (error) {
+                                showToast('حدث خطأ أثناء حذف الإعلان', 'error');
+                                console.error('Error deleting announcement:', error);
+                            } else {
+                                showToast('تم حذف الإعلان', 'success');
+                                renderAnnouncementsList('admin'); // Refresh the list
+                            }
+                        });
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching announcements:', error);
+            container.innerHTML = '<p class="text-red-500 text-center p-4">حدث خطأ في تحميل الإعلانات.</p>';
+        }
+    }
+    
+    async function renderAttendanceSheet() {
+        const container = document.getElementById('attendance-player-list');
+        const date = document.getElementById('attendance-date').value;
+        if (!date) {
+            container.innerHTML = '<p class="text-muted text-center">اختر تاريخاً لعرض اللاعبين</p>';
+            return;
+        }
+        
+        container.innerHTML = ''; // Clear list
+        if (appState.coachPlayers.length === 0) {
+            container.innerHTML = '<p class="text-muted text-center">لا يوجد لاعبون مسجلون لهذا المدرب.</p>';
+            return;
+        }
+
+        showLoader();
+        try {
+            const { data: attendanceData, error } = await supabase
+                .from('attendance')
+                .select('player_id')
+                .eq('date', date)
+                .eq('present', true)
+                .eq('coach_id', appState.currentUser.id);
+
+            if (error) {
+                throw error;
+            }
+
+            const presentIds = attendanceData ? attendanceData.map(item => item.player_id) : [];
+
+            // فلترة اللاعبين حسب الفئة المختارة
+            const category = document.getElementById('attendance-category').value;
+            let filteredPlayers = appState.coachPlayers;
+            if (category !== 'all') {
+                filteredPlayers = appState.coachPlayers.filter(player => player.category === category);
+            }
+            
+            filteredPlayers.forEach(player => {
+                const isChecked = presentIds.includes(player.id) ? 'checked' : '';
+                container.innerHTML += `
+                    <label class="flex items-center justify-between p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
+                        <span>${player.name}</span>
+                        <input type="checkbox" value="${player.id}" class="attendance-checkbox form-checkbox h-5 w-5 rounded focus-ring" ${isChecked}>
+                    </label>
+                `;
+            });
+        } catch (error) {
+            console.error("Error loading attendance sheet:", error);
+            container.innerHTML = '<p class="text-red-500 text-center">حدث خطأ في تحميل قائمة الحضور.</p>';
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function handleSaveAttendance() {
+        const date = document.getElementById('attendance-date').value;
+        if (!date) {
+            showToast("يرجى تحديد تاريخ التمرين أولاً.", "error");
+            return;
+        }
+        showLoader();
+        const presentPlayerIds = Array.from(document.querySelectorAll('.attendance-checkbox:checked')).map(cb => cb.value);
+        const allPlayerIds = appState.coachPlayers.map(p => p.id);
+
+        const attendanceRecords = allPlayerIds.map(playerId => ({
+            date: date,
+            coach_id: appState.currentUser.id,
+            player_id: playerId,
+            present: presentPlayerIds.includes(String(playerId))
+        }));
+
+        try {
+            const { error } = await supabase
+                .from('attendance')
+                .upsert(attendanceRecords, { onConflict: 'date, player_id' });
+
+            if (error) {
+                throw error;
+            }
+            showToast("تم حفظ سجل الحضور بنجاح.", "success");
+        } catch (error) {
+            console.error("Error saving attendance:", error);
+            showToast("فشل حفظ الحضور.", "error");
+        } finally {
+            hideLoader();
+        }
+    }
+
+    async function loadAndRenderAttendance(playerId, coachId) {
+        // Replaced Firebase logic with Supabase realtime based on playerId
+        const container = document.getElementById('parent-attendance-view');
+        if (!container) return;
+        container.innerHTML = '<p class="text-muted text-center">جاري تحميل الحضور...</p>';
+        window.appState = window.appState || { unsubscribeListeners: [] };
+        const unsubscribe = setupAttendanceRealtime(playerId, 'parent-attendance-view');
+        appState.unsubscribeListeners.push(unsubscribe);
+    }
+
+    // --- Theme Toggle ---
+    function setupThemeToggle() {
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const sunIcon = document.getElementById('theme-toggle-sun');
+        const moonIcon = document.getElementById('theme-toggle-moon');
+
+        const applyTheme = (theme) => {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            } else {
+                document.documentElement.classList.remove('dark');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            }
+            // Re-render charts if they exist
+            if (appState.currentPlayer && appState.currentPlayer.evaluations?.length > 0) {
+                if (radarChart) radarChart.destroy();
+                if (progressChart) progressChart.destroy();
+                createRadarChart(appState.currentPlayer);
+                createProgressChart(appState.currentPlayer);
+                updateProgressChart();
+            }
+        };
+
+        themeToggleBtn.addEventListener('click', () => {
+            const isDark = document.documentElement.classList.toggle('dark');
+            const newTheme = isDark ? 'dark' : 'light';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
+        });
+
+        // Load saved theme on startup
+        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        applyTheme(savedTheme);
+    }
+
+    // --- App Initialization ---
+    function initApp() {
+        setupThemeToggle();
+        attachEventListeners();
+
+        // Supabase auth session handling
+        const applySession = async (session) => {
+            // Clear any existing listeners before setting up new ones
+            appState.unsubscribeListeners.forEach(unsub => { try { unsub(); } catch(e) {} });
+            appState.unsubscribeListeners = [];
+
+            showLoader();
+            if (session && session.user) {
+                // Prefer localStorage role if available
+                const currentUser = window.authManager?.getCurrentUser?.();
+                if (currentUser?.type === 'admin') {
+                    appState.currentUser = session.user;
+                    appState.userData = currentUser.data;
+                    appState.userRole = 'admin';
+                    renderAdminDashboard();
+                    showPage('admin-dashboard-page');
+                } else if (currentUser?.type === 'coach') {
+                    appState.currentUser = currentUser.data;
+                    appState.userData = currentUser.data;
+                    appState.userRole = 'coach';
+                    renderCoachDashboard();
+                    showPage('coach-dashboard-page');
+                } else if (currentUser?.type === 'parent') {
+                    appState.currentUser = currentUser.data;
+                    appState.userData = currentUser.data;
+                    appState.userRole = 'parent';
+                    showPage('parent-dashboard-page');
+                } else {
+                    // Default: authenticated via Supabase = admin
+                    appState.currentUser = session.user;
+                    appState.userData = session.user;
+                    appState.userRole = 'admin';
+                    renderAdminDashboard();
+                    showPage('admin-dashboard-page');
+                }
+            } else {
+                // No Supabase session, fallback to localStorage users (coach/parent)
+                const currentUser = window.authManager?.getCurrentUser?.();
+                if (currentUser) {
+                    if (currentUser.type === 'coach') {
+                        appState.currentUser = currentUser.data;
+                        appState.userData = currentUser.data;
+                        appState.userRole = 'coach';
+                        renderCoachDashboard();
+                        showPage('coach-dashboard-page');
+                    } else if (currentUser.type === 'parent') {
+                        appState.currentUser = currentUser.data;
+                        appState.userData = currentUser.data;
+                        appState.userRole = 'parent';
+                        showPage('parent-dashboard-page');
+                    } else if (currentUser.type === 'admin') {
+                        appState.currentUser = currentUser.data;
+                        appState.userData = currentUser.data;
+                        appState.userRole = 'admin';
+                        renderAdminDashboard();
+                        showPage('admin-dashboard-page');
+                    } else {
+                        showPage('role-selection-page');
+                    }
+                } else {
+                    showPage('role-selection-page');
+                }
+            }
+            hideLoader();
+        };
+
+        // Subscribe to auth changes
+        supabase.auth.onAuthStateChange((_event, session) => {
+            applySession(session);
+        });
+    }
+
+    // Run the app
+    initApp();
+</script>
+
+<!-- App Scripts -->
+<script src="auth.js"></script>
+<script src="players-management.js"></script>
+<script src="attendance.js"></script>
+
+<script>
+// Load last 10 attendance records for a player
+async function loadRecentAttendance(playerId, container) {
+  const { data, error } = await supabase
+    .from('attendance')
+    .select('*')
+    .eq('player_id', playerId)
+    .order('date', { ascending: false })
+    .limit(10);
+
+  if (error) {
+    console.error('Load attendance error:', error);
+    container.innerHTML = '<p class="text-red-500 text-center">حدث خطأ أثناء تحميل سجل الحضور.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+  (data || []).forEach(record => {
+    const isPresent = record.present === true; // adjust if your schema differs
+    container.innerHTML += `
+      <div class="flex justify-between items-center p-2 rounded ${isPresent ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}">
+        <span class="font-bold">${new Date(record.date).toLocaleDateString('ar-EG')}</span>
+        <span class="${isPresent ? 'text-green-600' : 'text-red-600'} font-bold">${isPresent ? 'حاضر' : 'غائب'}</span>
+      </div>
+    `;
+  });
+}
+
+// Subscribe to realtime attendance changes for a specific player
+function setupAttendanceRealtime(playerId, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) {
+    console.warn('Attendance container not found:', containerId);
+    return () => {};
+  }
+
+  // Initial load
+  loadRecentAttendance(playerId, container);
+
+  // Realtime channel filtered by player_id
+  const channel = supabase.channel('attendance_changes_' + playerId)
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'attendance',
+      filter: `player_id=eq.${playerId}`
+    }, payload => {
+      loadRecentAttendance(playerId, container);
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('Realtime subscribed for player', playerId);
+      }
+    });
+
+  // Return unsubscriber
+  return () => supabase.removeChannel(channel);
+}
+</script>
+
+</body>
+</html>
