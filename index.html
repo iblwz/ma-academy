@@ -1566,6 +1566,7 @@
         await loadCoachPlayers();
     }
 
+    // ========== START: MODIFIED FUNCTION ==========
     // دالة تحميل لاعبي المدرب من Supabase
     async function loadCoachPlayers() {
         try {
@@ -1573,44 +1574,65 @@
             const whatsappSelect = document.getElementById('coach-whatsapp-select');
             
             if (!appState.currentUser) return;
-            
-            // جلب لاعبي المدرب من Supabase
-            const { data: players, error } = await supabase
-                .from('players')
-                .select('*')
-                .eq('coach_id', appState.currentUser.id)
-                .order('name', { ascending: true });
-            
-            if (error) {
-                console.error('خطأ في جلب لاعبي المدرب:', error);
-                listContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+
+            showLoader(); // إظهار التحميل
+
+            // --- الخطوة 1: جلب أرقام اللاعبين المرتبطين بالمدرب من الجدول الوسيط ---
+            const { data: playerRelations, error: relationsError } = await supabase
+                .from('coach_players')
+                .select('player_id')
+                .eq('coach_id', appState.currentUser.id);
+
+            if (relationsError) {
+                throw relationsError;
+            }
+
+            if (!playerRelations || playerRelations.length === 0) {
+                listContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون معينون لك حالياً.</p>';
+                appState.coachPlayers = [];
+                renderAttendanceSheet(); // عرض ورقة حضور فارغة
+                hideLoader();
                 return;
             }
-            
+
+            // استخراج أرقام اللاعبين في مصفوفة
+            const playerIds = playerRelations.map(relation => relation.player_id);
+
+            // --- الخطوة 2: جلب بيانات اللاعبين الكاملة باستخدام مصفوفة الأرقام ---
+            const { data: players, error: playersError } = await supabase
+                .from('players')
+                .select('*')
+                .in('id', playerIds) // .in تبحث عن كل اللاعبين الذين تطابق أرقامهم ما في المصفوفة
+                .order('name', { ascending: true });
+
+            if (playersError) {
+                throw playersError;
+            }
+
+            hideLoader(); // إخفاء التحميل
+
             // مسح المحتوى السابق
             listContainer.innerHTML = '';
             whatsappSelect.innerHTML = '<option value="">-- اختر --</option>';
             appState.coachPlayers = []; // إعادة تعيين قائمة اللاعبين
             
             if (!players || players.length === 0) {
-                listContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون حالياً. قم بإضافة لاعب جديد.</p>';
-                renderAttendanceSheet(); // عرض ورقة حضور فارغة
+                listContainer.innerHTML = '<p class="text-muted p-4 text-center">لم يتم العثور على بيانات اللاعبين.</p>';
+                renderAttendanceSheet();
                 return;
             }
             
             appState.coachPlayers = players; // حفظ اللاعبين للحضور
             renderAttendanceSheet(); // إعادة عرض ورقة الحضور مع اللاعبين
             
-            // عرض اللاعبين
+            // عرض اللاعبين (الكود المتبقي يبقى كما هو)
             players.forEach((player) => {
-                // إضافة اللاعب للقائمة
                 const playerEl = document.createElement('div');
                 playerEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
                 playerEl.dataset.name = player.name;
                 playerEl.innerHTML = `
                     <div>
                         <p class="font-bold">${player.name}</p>
-                        <p class="text-sm text-muted">الرمز: ${player.access_code}</p>
                         <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
                     </div>
                     <div class="flex gap-2">
@@ -1621,7 +1643,6 @@
                 `;
                 listContainer.appendChild(playerEl);
 
-                // إضافة اللاعب لقائمة WhatsApp إذا كان لديه رقم هاتف
                 if (player.phone) {
                     const option = document.createElement('option');
                     option.value = player.phone;
@@ -1630,7 +1651,7 @@
                 }
             });
 
-            // إضافة مستمعي الأحداث
+            // إضافة مستمعي الأحداث (الكود المتبقي يبقى كما هو)
             listContainer.querySelectorAll('.add-evaluation-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => showEvaluationModal(e.target.dataset.playerId));
             });
@@ -1668,8 +1689,10 @@
         } catch (error) {
             console.error('خطأ في تحميل لاعبي المدرب:', error);
             document.getElementById('coach-player-list').innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+            hideLoader();
         }
     }
+    // ========== END: MODIFIED FUNCTION ==========
 
     async function showEvaluationModal(playerId) {
 
