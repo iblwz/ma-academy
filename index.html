@@ -553,6 +553,9 @@
                         </section>
                         <section id="medical-notes" class="bg-card p-6 rounded-2xl shadow-lg">
                             <h2 class="text-xl font-bold mb-4 text-center">الملاحظات الطبية</h2>
+                            <div id="medical-notes-view" class="hidden bg-gray-100 dark:bg-gray-700 p-3 rounded-md mb-3">
+                                <p class="text-sm text-muted"></p>
+                            </div>
                             <form id="medical-notes-form" class="space-y-3">
                                 <textarea id="medical-notes-input" rows="4" class="w-full border border-form rounded-md p-2 focus-ring dark:bg-gray-700 dark:text-gray-200" placeholder="أضف أي ملاحظات طبية هامة هنا..."></textarea>
                                 <button type="submit" class="w-full btn btn-info">حفظ الملاحظات</button>
@@ -1178,7 +1181,7 @@
             nameInput.value = '';
             phoneInput.value = '';
             coachSelect.value = '';
-            showToast(`تم إضافة اللاعب بنجاح. الرمز الخاص به هو: ${newPlayer.access_code}`, 'success', 5000);
+            showToast(`تم إضافة اللاعب بنجاح.`, 'success', 5000);
             
             // تحديث قائمة اللاعبين
             await loadPlayersList();
@@ -1253,57 +1256,65 @@
         try {
             const playerListContainer = document.getElementById('admin-player-list');
             const whatsappSelect = document.getElementById('admin-whatsapp-select');
-            // جلب اللاعبين بدون join
-            const { data: players, error } = await supabase
-                .from('players')
-                .select('*')
-                .order('name', { ascending: true });
-            // جلب المدربين
-            const { data: coaches } = await supabase
-                .from('coaches')
-                .select('id, name');
-            const coachMap = {};
-            if (coaches) {
-                coaches.forEach(c => { coachMap[c.id] = c.name; });
-            }
-            if (error) {
-                console.error('خطأ في جلب اللاعبين:', error);
-                playerListContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
+
+            // Fetch all data in parallel
+            const [
+                { data: players, error: playersError },
+                { data: coaches, error: coachesError },
+                { data: relations, error: relationsError }
+            ] = await Promise.all([
+                supabase.from('players').select('*').order('name', { ascending: true }),
+                supabase.from('coaches').select('id, name'),
+                supabase.from('coach_players').select('*')
+            ]);
+
+            if (playersError || coachesError || relationsError) {
+                console.error('Error fetching data:', playersError || coachesError || relationsError);
+                playerListContainer.innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل البيانات.</p>';
                 return;
             }
-            
-            // مسح المحتوى السابق
+
+            // Create maps for efficient lookups
+            const coachMap = new Map(coaches.map(c => [c.id, c.name]));
+            const playerCoachesMap = new Map();
+            relations.forEach(r => {
+                if (!playerCoachesMap.has(r.player_id)) {
+                    playerCoachesMap.set(r.player_id, []);
+                }
+                playerCoachesMap.get(r.player_id).push(r.coach_id);
+            });
+
+            // Clear previous content
             playerListContainer.innerHTML = '';
             whatsappSelect.innerHTML = '<option value="">-- اختر --</option>';
+
             if (!players || players.length === 0) {
                 playerListContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون مسجلون في النظام.</p>';
                 return;
             }
+
             players.forEach((player) => {
-                const coachName = player.coach_id && coachMap[player.coach_id] ? coachMap[player.coach_id] : 'غير محدد';
-                // ...existing code for playerEl and buttons...
+                const assignedCoachIds = playerCoachesMap.get(player.id) || [];
+                const coachNames = assignedCoachIds.map(id => coachMap.get(id) || 'مدرب غير معروف').join(', ');
+
                 const playerEl = document.createElement('div');
                 playerEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
                 playerEl.dataset.name = player.name;
-                let assignCoachBtn = '';
-                if (!player.coach_id) {
-                    assignCoachBtn = `<button class="assign-coach-btn btn btn-secondary text-xs py-1 px-2" data-player-id="${player.id}">تعيين مدرب</button>`;
-                }
+
                 playerEl.innerHTML = `
                     <div>
                         <p class="font-bold">${player.name}</p>
-                        <p class="text-sm text-muted">المدرب: ${coachName}</p>
+                        <p class="text-sm text-muted">المدربون: ${coachNames || 'غير معين'}</p>
                         <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
                     </div>
                     <div class="flex gap-2">
                         <button data-player-id="${player.id}" class="view-player-btn btn btn-info text-xs py-1 px-2">عرض التقرير</button>
+                        <button data-player-id="${player.id}" class="assign-coach-btn btn btn-secondary text-xs py-1 px-2">تعيين مدرب</button>
                         <button data-player-id="${player.id}" data-player-name="${player.name}" class="delete-player-btn btn btn-danger text-xs py-1 px-2">حذف اللاعب</button>
-                        ${assignCoachBtn}
                     </div>
                 `;
                 playerListContainer.appendChild(playerEl);
 
-                // إضافة اللاعب لقائمة WhatsApp إذا كان لديه رقم هاتف
                 if (player.phone) {
                     const option = document.createElement('option');
                     option.value = player.phone;
@@ -1312,7 +1323,7 @@
                 }
             });
             
-            // إضافة مستمعي الأحداث
+            // Add event listeners
             playerListContainer.querySelectorAll('.delete-player-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => handleDeletePlayer(e.target.dataset.playerId, e.target.dataset.playerName));
             });
@@ -1320,81 +1331,77 @@
             playerListContainer.querySelectorAll('.view-player-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     showLoader();
-                    try {
-                        const playerId = e.target.dataset.playerId;
-                        const { data: player, error } = await supabase
-                            .from('players')
-                            .select('*')
-                            .eq('id', playerId)
-                            .single();
-                        if (error) throw error;
-                        if (player) {
-                            appState.currentPlayer = player;
-                            renderParentDashboard(player, true);
-                            showPage('parent-dashboard-page');
-                        }
-                    } catch (error) {
-                        console.error('خطأ في جلب بيانات اللاعب:', error);
-                        showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    const playerId = e.target.dataset.playerId;
+                    const { data: player, error } = await supabase.from('players').select('*').eq('id', playerId).single();
+                    if (error) {
+                         showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    } else if (player) {
+                        appState.currentPlayer = player;
+                        renderParentDashboard(player, true);
+                        showPage('parent-dashboard-page');
                     }
                     hideLoader();
                 });
             });
-            // إضافة منطق زر تعيين مدرب
+
             playerListContainer.querySelectorAll('.assign-coach-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
-                    const playerId = e.target.dataset.playerId;
-                    // جلب قائمة المدربين
-                    const { data: coaches, error } = await supabase
-                        .from('coaches')
-                        .select('id, name')
-                        .order('name', { ascending: true });
-                    if (error || !coaches || coaches.length === 0) {
-                        showToast('لا يوجد مدربين متاحين أو حدث خطأ', 'error');
+                    const playerId = parseInt(e.target.dataset.playerId, 10);
+                    const assignedCoachIds = playerCoachesMap.get(playerId) || [];
+
+                    const { data: allCoaches, error } = await supabase.from('coaches').select('id, name');
+                    if (error || !allCoaches) {
+                        showToast('لا يمكن تحميل المدربين', 'error');
                         return;
                     }
-                    // إنشاء نافذة اختيار
-                    const select = document.createElement('select');
-                    select.className = 'border rounded p-2 my-2';
-                    select.innerHTML = '<option value="">اختر مدرب...</option>' + coaches.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
                     const modal = document.createElement('div');
                     modal.className = 'modal-backdrop';
-                    modal.innerHTML = `<div class="modal-content"><h3 class="mb-4">تعيين مدرب للاعب</h3></div>`;
-                    modal.querySelector('.modal-content').appendChild(select);
-                    const confirmBtn = document.createElement('button');
-                    confirmBtn.className = 'btn btn-primary mt-4';
-                    confirmBtn.textContent = 'تعيين';
-                    modal.querySelector('.modal-content').appendChild(confirmBtn);
-                    const cancelBtn = document.createElement('button');
-                    cancelBtn.className = 'btn btn-neutral mt-4 ml-2';
-                    cancelBtn.textContent = 'إلغاء';
-                    modal.querySelector('.modal-content').appendChild(cancelBtn);
+                    const unassignedCoaches = allCoaches.filter(c => !assignedCoachIds.includes(c.id));
+                    
+                    let selectOptions = '<option value="">اختر مدرباً جديداً...</option>';
+                    if (unassignedCoaches.length > 0) {
+                        selectOptions += unassignedCoaches.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+                    } else {
+                         selectOptions = '<option value="">لا يوجد مدربون غير معينين</option>';
+                    }
+
+                    modal.innerHTML = `
+                        <div class="modal-content">
+                            <h3 class="mb-4">تعيين مدرب جديد للاعب</h3>
+                            <select id="coach-assign-select" class="w-full border rounded p-2 my-2">${selectOptions}</select>
+                            <div class="flex gap-4 mt-4">
+                                <button id="confirm-assign-btn" class="btn btn-primary w-full">تعيين</button>
+                                <button id="cancel-assign-btn" class="btn btn-neutral w-full">إلغاء</button>
+                            </div>
+                        </div>`;
                     document.body.appendChild(modal);
-                    confirmBtn.onclick = async () => {
-                        const coachId = select.value;
+
+                    document.getElementById('cancel-assign-btn').onclick = () => document.body.removeChild(modal);
+                    document.getElementById('confirm-assign-btn').onclick = async () => {
+                        const coachId = document.getElementById('coach-assign-select').value;
                         if (!coachId) {
                             showToast('يرجى اختيار مدرب', 'info');
                             return;
                         }
                         showLoader();
-                        const { error: updateError } = await supabase
-                            .from('players')
-                            .update({ coach_id: coachId })
-                            .eq('id', playerId);
+                        const { error: insertError } = await supabase
+                            .from('coach_players')
+                            .insert({ coach_id: coachId, player_id: playerId });
+                        
                         hideLoader();
-                        if (updateError) {
-                            showToast('فشل التعيين', 'error');
+                        if (insertError) {
+                            showToast('فشل التعيين. قد يكون المدرب معيناً بالفعل.', 'error');
+                            console.error(insertError);
                         } else {
                             showToast('تم تعيين المدرب بنجاح', 'success');
-                            await loadPlayersList();
+                            await loadPlayersList(); // Refresh the list
                         }
-                        document.body.removeChild(modal);
-                    };
-                    cancelBtn.onclick = () => {
                         document.body.removeChild(modal);
                     };
                 });
             });
+
         } catch (error) {
             console.error('خطأ في تحميل اللاعبين:', error);
             document.getElementById('admin-player-list').innerHTML = '<p class="text-muted p-4 text-center">خطأ في تحميل اللاعبين.</p>';
@@ -1403,7 +1410,6 @@
     
     async function renderAdminDashboard() {
         renderAnnouncementsList('admin');
-        // Render Coaches List and populate dropdown using Supabase
         await loadCoachesList();
         await loadPlayersList();
     }
@@ -1415,17 +1421,9 @@
             async () => {
                 showLoader();
                 try {
-                    // حذف المدرب من Supabase
-                    const { error } = await supabase
-                        .from('coaches')
-                        .delete()
-                        .eq('id', coachId);
-                    
+                    const { error } = await supabase.from('coaches').delete().eq('id', coachId);
                     if (error) throw error;
-                    
                     showToast(`تم حذف المدرب ${coachName} بنجاح.`, 'success');
-                    
-                    // تحديث قائمة المدربين
                     await loadCoachesList();
                 } catch (error) {
                     console.error("Error deleting coach:", error);
@@ -1439,43 +1437,69 @@
 
 
     // --- Coach Dashboard Functions ---
+
+    // ========== START: CORRECTED FUNCTION ==========
     async function addPlayer(playerName, playerPhone, coachId, coachName) {
-        if (playerName && playerPhone && coachId) {
-            try {
-                const now = new Date();
-                const created_at = now.toISOString();
-                const expiry_date = new Date(now.getTime() + 30*24*60*60*1000).toISOString().slice(0,10);
-                let category = 'baraem';
-                const categoryInput = document.getElementById('new-player-category');
-                if (categoryInput && categoryInput.value) {
-                    category = categoryInput.value;
-                }
-                const newPlayer = {
+        if (!playerName || !playerPhone || !coachId) {
+            showToast('يرجى ملء جميع الحقول المطلوبة واختيار مدرب.', 'error');
+            return null;
+        }
+
+        try {
+            const now = new Date();
+            const created_at = now.toISOString();
+            const expiry_date = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            
+            let category = 'baraem';
+            const categoryInput = document.getElementById('new-player-category') || document.getElementById('admin-new-player-category');
+            if (categoryInput && categoryInput.value) {
+                category = categoryInput.value;
+            }
+
+            // Step 1: Insert the player without coach info to get their ID
+            const { data: newPlayerData, error: playerError } = await supabase
+                .from('players')
+                .insert([{
                     name: playerName,
                     phone: playerPhone,
                     category: category,
                     created_at: created_at,
                     expiry_date: expiry_date,
-                    coach_id: coachId
-                };
-                const { data, error } = await supabase
-                    .from('players')
-                    .insert([newPlayer])
-                    .select()
-                    .single();
-                if (error) {
-                    showToast('فشل إضافة اللاعب: ' + (error.message || error.details || error), 'error', 6000);
-                    return null;
-                }
-                return data;
-            } catch (error) {
-                showToast('فشل إضافة اللاعب: ' + error.message, 'error', 6000);
-                return null;
+                }])
+                .select()
+                .single();
+
+            if (playerError) {
+                console.error("Error inserting player:", playerError);
+                throw playerError; // Stop if player creation fails
             }
+
+            console.log("Player created with ID:", newPlayerData.id);
+
+            // Step 2: Link the new player to the coach in the junction table
+            const { error: relationError } = await supabase
+                .from('coach_players')
+                .insert([{
+                    coach_id: coachId,
+                    player_id: newPlayerData.id
+                }]);
+
+            if (relationError) {
+                console.error("Error creating coach-player relation:", relationError);
+                // Optional: You could try to delete the just-created player for data consistency
+                throw relationError; 
+            }
+
+            // Everything was successful, return the new player's data
+            return newPlayerData;
+
+        } catch (error) {
+            showToast('فشل إضافة اللاعب: ' + (error.message || error.details || 'خطأ غير معروف'), 'error', 6000);
+            return null;
         }
-        showToast('يرجى ملء جميع الحقول المطلوبة واختيار مدرب.', 'error');
-        return null;
     }
+    // ========== END: CORRECTED FUNCTION ==========
+
 
     async function handleCoachAddPlayer(e) {
         e.preventDefault();
@@ -1493,7 +1517,7 @@
         if (newPlayer) {
             nameInput.value = '';
             phoneInput.value = '';
-            showToast(`تم إضافة اللاعب بنجاح. الرمز الخاص به هو: ${newPlayer.access_code}`, 'success', 5000);
+            showToast(`تم إضافة اللاعب بنجاح.`, 'success', 5000);
             
             // تحديث قائمة اللاعبين
             await loadCoachPlayers();
@@ -1509,35 +1533,13 @@
             async () => {
                 showLoader();
                 try {
-                    // حذف اللاعب من Supabase
+                    // This will also delete related records in `coach_players` due to CASCADE constraint
                     const { error: playerError } = await supabase
                         .from('players')
                         .delete()
                         .eq('id', playerId);
                     
                     if (playerError) throw playerError;
-                    
-                    // حذف سجل ولي الأمر المرتبط
-                    const { error: parentError } = await supabase
-                        .from('parents')
-                        .delete()
-                        .eq('player_name', playerName);
-                    
-                    if (parentError) {
-                        console.error("Error deleting parent record:", parentError);
-                        // لا نوقف العملية إذا فشل حذف ولي الأمر
-                    }
-                    
-                    // حذف سجلات الحضور المرتبطة
-                    const { error: attendanceError } = await supabase
-                        .from('attendance')
-                        .delete()
-                        .eq('player_id', playerId);
-                    
-                    if (attendanceError) {
-                        console.error("Error deleting attendance records:", attendanceError);
-                        // لا نوقف العملية إذا فشل حذف الحضور
-                    }
                     
                     showToast(`تم حذف اللاعب ${playerName} وجميع بياناته.`, 'success');
                     
@@ -1566,8 +1568,7 @@
         await loadCoachPlayers();
     }
 
-    // ========== START: MODIFIED FUNCTION ==========
-    // دالة تحميل لاعبي المدرب من Supabase
+    // ========== START: CORRECTED FUNCTION ==========
     async function loadCoachPlayers() {
         try {
             const listContainer = document.getElementById('coach-player-list');
@@ -1575,9 +1576,9 @@
             
             if (!appState.currentUser) return;
 
-            showLoader(); // إظهار التحميل
+            showLoader();
 
-            // --- الخطوة 1: جلب أرقام اللاعبين المرتبطين بالمدرب من الجدول الوسيط ---
+            // Step 1: Get the IDs of players assigned to the current coach from the junction table
             const { data: playerRelations, error: relationsError } = await supabase
                 .from('coach_players')
                 .select('player_id')
@@ -1590,31 +1591,30 @@
             if (!playerRelations || playerRelations.length === 0) {
                 listContainer.innerHTML = '<p class="text-muted p-4 text-center">لا يوجد لاعبون معينون لك حالياً.</p>';
                 appState.coachPlayers = [];
-                renderAttendanceSheet(); // عرض ورقة حضور فارغة
+                renderAttendanceSheet();
                 hideLoader();
                 return;
             }
 
-            // استخراج أرقام اللاعبين في مصفوفة
+            // Extract player IDs into a simple array
             const playerIds = playerRelations.map(relation => relation.player_id);
 
-            // --- الخطوة 2: جلب بيانات اللاعبين الكاملة باستخدام مصفوفة الأرقام ---
+            // Step 2: Fetch the full details of those players using their IDs
             const { data: players, error: playersError } = await supabase
                 .from('players')
                 .select('*')
-                .in('id', playerIds) // .in تبحث عن كل اللاعبين الذين تطابق أرقامهم ما في المصفوفة
+                .in('id', playerIds)
                 .order('name', { ascending: true });
 
             if (playersError) {
                 throw playersError;
             }
 
-            hideLoader(); // إخفاء التحميل
+            hideLoader();
 
-            // مسح المحتوى السابق
             listContainer.innerHTML = '';
             whatsappSelect.innerHTML = '<option value="">-- اختر --</option>';
-            appState.coachPlayers = []; // إعادة تعيين قائمة اللاعبين
+            appState.coachPlayers = []; 
             
             if (!players || players.length === 0) {
                 listContainer.innerHTML = '<p class="text-muted p-4 text-center">لم يتم العثور على بيانات اللاعبين.</p>';
@@ -1622,10 +1622,9 @@
                 return;
             }
             
-            appState.coachPlayers = players; // حفظ اللاعبين للحضور
-            renderAttendanceSheet(); // إعادة عرض ورقة الحضور مع اللاعبين
+            appState.coachPlayers = players;
+            renderAttendanceSheet();
             
-            // عرض اللاعبين (الكود المتبقي يبقى كما هو)
             players.forEach((player) => {
                 const playerEl = document.createElement('div');
                 playerEl.className = 'list-item flex justify-between items-center p-3 rounded-lg';
@@ -1651,7 +1650,6 @@
                 }
             });
 
-            // إضافة مستمعي الأحداث (الكود المتبقي يبقى كما هو)
             listContainer.querySelectorAll('.add-evaluation-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => showEvaluationModal(e.target.dataset.playerId));
             });
@@ -1663,24 +1661,14 @@
             listContainer.querySelectorAll('.view-player-btn').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     showLoader();
-                    try {
-                        const playerId = e.target.dataset.playerId;
-                        const { data: player, error } = await supabase
-                            .from('players')
-                            .select('*')
-                            .eq('id', playerId)
-                            .single();
-                        
-                        if (error) throw error;
-                        
-                        if (player) {
-                            appState.currentPlayer = player;
-                            renderParentDashboard(player, true);
-                            showPage('parent-dashboard-page');
-                        }
-                    } catch (error) {
-                        console.error('خطأ في جلب بيانات اللاعب:', error);
-                        showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    const playerId = e.target.dataset.playerId;
+                    const { data: player, error } = await supabase.from('players').select('*').eq('id', playerId).single();
+                    if (error) {
+                         showToast('خطأ في جلب بيانات اللاعب', 'error');
+                    } else if (player) {
+                        appState.currentPlayer = player;
+                        renderParentDashboard(player, true);
+                        showPage('parent-dashboard-page');
                     }
                     hideLoader();
                 });
@@ -1692,7 +1680,7 @@
             hideLoader();
         }
     }
-    // ========== END: MODIFIED FUNCTION ==========
+    // ========== END: CORRECTED FUNCTION ==========
 
     async function showEvaluationModal(playerId) {
 
@@ -1734,75 +1722,6 @@
 
         document.getElementById('evaluation-modal').classList.remove('hidden');
     }
-
-    async function handlePrintPDF() {
-        if (!appState.currentPlayer) {
-            showToast("يرجى اختيار لاعب أولاً", "error");
-            return;
-        }
-        
-        showLoader();
-        try {
-            // إنشاء محتوى PDF
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            
-            // إضافة اللغة العربية
-            doc.setFont("amiri");
-            
-            // إضافة العنوان
-            doc.setFontSize(20);
-            doc.text("تقرير تقييم اللاعب", 105, 15, { align: "center" });
-            
-            // إضافة معلومات اللاعب
-            doc.setFontSize(16);
-            doc.text(`الاسم: ${appState.currentPlayer.name}`, 20, 30);
-            doc.text(`الفئة: ${appState.currentPlayer.category || "غير محددة"}`, 20, 45);
-            doc.text(`تاريخ التقييم: ${new Date().toLocaleDateString("ar-EG")}`, 20, 60);
-            
-            // إضافة التقييمات الحالية
-            if (appState.currentPlayer.evaluations && appState.currentPlayer.evaluations.length > 0) {
-                const latestEval = appState.currentPlayer.evaluations[appState.currentPlayer.evaluations.length - 1];
-                
-                doc.setFontSize(14);
-                doc.text("التقييم الحالي:", 20, 80);
-                
-                doc.setFontSize(12);
-                let yPos = 95;
-                
-                // إضافة درجات المهارات
-                const skills = Object.keys(latestEval.scores || {});
-                skills.forEach(skill => {
-                    doc.text(`${skill}: ${latestEval.scores[skill]}`, 30, yPos);
-                    yPos += 15;
-                });
-                
-                // إضافة الملاحظات
-                if (latestEval.notes) {
-                    yPos += 10;
-                    doc.text("ملاحظات المدرب:", 20, yPos);
-                    yPos += 15;
-                    
-                    // تقسيم النص الطويل إلى أسطر متعددة
-                    const splitNotes = doc.splitTextToSize(latestEval.notes, 160);
-                    doc.text(splitNotes, 30, yPos);
-                }
-            } else {
-                doc.setFontSize(14);
-                doc.text("لا يوجد تقييمات مسجلة لللاعب", 20, 80);
-            }
-            
-            // حفظ وطباعة PDF
-            doc.save(`تقرير_تقييم_${appState.currentPlayer.name}_${new Date().toLocaleDateString("ar-EG")}.pdf`);
-            
-            showToast("تم حفظ تقرير PDF بنجاح", "success");
-        } catch (error) {
-            console.error("Error generating PDF:", error);
-            showToast("فشل في إنشاء تقرير PDF", "error");
-        } finally {
-            hideLoader();
-        }
-    }
     
     async function handleSaveEvaluation(e) {
         e.preventDefault();
@@ -1821,18 +1740,7 @@
             Object.keys(SKILLS).forEach(key => {
                 newEval.scores[key] = parseInt(document.getElementById(`eval-skill-${key}`).value, 10);
             });
-            // إضافة التقييم إلى جدول evaluations في Supabase
-            const { error } = await supabase
-                .from('evaluations')
-                .insert([{
-                    player_id: newEval.player_id,
-                    coach_id: newEval.coach_id,
-                    coach_name: newEval.coach_name,
-                    date: newEval.date,
-                    scores: newEval.scores,
-                    notes: newEval.notes,
-                    created_at: newEval.created_at
-                }]);
+            const { error } = await supabase.from('evaluations').insert([newEval]);
             if (error) {
                 showToast("حدث خطأ أثناء حفظ التقييم.", "error");
             } else {
@@ -1906,9 +1814,6 @@
         }
     }
 
-    
-
-    // وظيفة مساعدة للحصول على اسم الفئة
     function getCategoryName(categoryCode) {
         const categories = {
             'kids': 'أطفال',
@@ -1918,38 +1823,10 @@
         };
         return categories[categoryCode] || categoryCode;
     }
-
-    // تحميل جدول المدرب من Supabase
-    async function loadScheduleFromSupabase(coachId) {
-        const container = document.getElementById('parent-schedule-view');
-        try {
-            const { data, error } = await supabase
-                .from('schedules')
-                .select('*')
-                .eq('coach_id', coachId)
-                .single();
-            
-            if (error) {
-                throw error;
-            }
-            
-            if (data) {
-                container.innerHTML = Object.keys(DAYS_OF_WEEK).map(day => `
-                    <div class="flex justify-between items-center p-2 rounded ${data[day] ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-50 dark:bg-gray-700/20'}">
-                        <span class="font-bold">${DAYS_OF_WEEK[day]}</span>
-                        <span class="text-muted">${data[day] || 'راحة'}</span>
-                    </div>
-                `).join('');
-            } else {
-                container.innerHTML = '<p class="text-muted text-center">لم يقم المدرب بوضع جدول حتى الآن.</p>';
-            }
-        } catch (error) {
-            console.error("Error loading schedule:", error);
-            container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل الجدول.</p>';
-        }
-    }
     
-    // تحميل سجل الحضور من Supabase
+    // --- Parent Dashboard Functions ---
+
+    // +++ ADDED FUNCTIONS START +++
     async function loadAttendanceFromSupabase(playerId) {
         const container = document.getElementById('parent-attendance-view');
         try {
@@ -1985,10 +1862,9 @@
             container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل سجل الحضور.</p>';
         }
     }
-    
-    // تحميل الإعلانات من Supabase
+
     async function loadAnnouncementsFromSupabase() {
-        const container = document.getElementById('announcements-view'); // Corrected ID
+        const container = document.getElementById('announcements-view');
         const section = document.getElementById('announcements-section');
         try {
             const { data, error } = await supabase
@@ -1996,53 +1872,40 @@
                 .select('*')
                 .order('created_at', { ascending: false })
                 .limit(5);
-            
+
             if (error) {
                 throw error;
             }
-            
+
             if (data && data.length > 0) {
-                section.classList.remove('hidden'); // Show the section
-                container.innerHTML = `
-                    <div class="space-y-4">
-                        ${data.map(announcement => `
-                            <div class="bg-card p-4 rounded-lg shadow-sm">
-                                <p class="text-sm">${announcement.content}</p>
-                                <p class="text-xs text-muted mt-2">${new Date(announcement.created_at).toLocaleDateString('ar-SA')}</p>
-                            </div>
-                        `).join('')}
+                section.classList.remove('hidden');
+                container.innerHTML = data.map(announcement => `
+                    <div class="bg-card p-4 rounded-lg shadow-sm border-r-4 border-info-color">
+                        <p>${announcement.content}</p>
+                        <p class="text-xs text-muted mt-2 text-left">${new Date(announcement.created_at).toLocaleDateString('ar-SA')}</p>
                     </div>
-                `;
+                `).join('');
             } else {
-                section.classList.add('hidden'); // Hide the section
-                container.innerHTML = '<p class="text-muted text-center">لا توجد إعلانات حتى الآن.</p>';
+                section.classList.add('hidden');
             }
         } catch (error) {
             console.error("Error loading announcements:", error);
-            if(container) container.innerHTML = '<p class="text-red-500 text-center">خطأ في تحميل الإعلانات.</p>';
+            section.classList.add('hidden');
         }
     }
-    
-    // الوظيفة القديمة للتوافق مع الكود الحالي
-    async function loadAndRenderSchedule(coachId) {
-        await loadScheduleFromSupabase(coachId);
-    }
+    // +++ ADDED FUNCTIONS END +++
 
-    // --- Parent Dashboard Functions ---
+    // ========== START: CORRECTED FUNCTION ==========
     async function renderParentDashboard(player, isCoachOrAdminViewing = false) {
         const titleEl = document.getElementById('parent-dashboard-title');
         const actionsContainer = document.getElementById('parent-dashboard-actions');
         
-        // Clear previous buttons to avoid duplicate listeners
         actionsContainer.innerHTML = ''; 
 
         const logoutBtn = document.createElement('button');
         logoutBtn.className = 'btn btn-danger';
-        
         actionsContainer.appendChild(logoutBtn);
         
-        const medicalNotesForm = document.getElementById('medical-notes-form');
-
         if (isCoachOrAdminViewing) {
             titleEl.textContent = `عرض تقرير اللاعب: ${player.name}`;
             logoutBtn.textContent = 'العودة للوحة التحكم';
@@ -2051,88 +1914,125 @@
                 appState.currentPlayer = null;
                 showPage(`${role}-dashboard-page`);
             });
-            medicalNotesForm.classList.add('hidden');
         } else {
             titleEl.textContent = 'لوحة متابعة أداء اللاعب';
             logoutBtn.textContent = 'تسجيل الخروج';
             logoutBtn.addEventListener('click', logout);
-            medicalNotesForm.classList.remove('hidden');
         }
 
-        // عرض معلومات اللاعب
         document.getElementById('parent-player-info').innerHTML = `
+            <h3 class="text-xl font-bold mb-2">معلومات اللاعب</h3>
             <div class="bg-card p-4 rounded-lg shadow-sm">
-                <h3 class="text-lg font-bold mb-2">${player.name}</h3>
+                <p class="font-bold">${player.name}</p>
                 <p class="text-sm text-muted">الفئة: ${getCategoryName(player.category)}</p>
-                <p class="text-sm text-muted">تاريخ الانتهاء: ${player.expiryDate || 'غير محدد'}</p>
             </div>
         `;
-
+        
         try {
-            // جلب بيانات المدرب
-            let coachId = player.coach_id;
-            if (coachId) {
-                const { data: coach, error: coachError } = await supabase
-                    .from('coaches')
-                    .select('*')
-                    .eq('id', coachId)
-                    .single();
-                if (!coachError && coach) {
-                    document.getElementById('parent-coach-info').innerHTML = `
-                        <div class="bg-card p-4 rounded-lg shadow-sm">
-                            <h3 class="text-lg font-bold mb-2">المدرب: ${coach.name}</h3>
-                            <p class="text-sm text-muted">البريد الإلكتروني: ${coach.email}</p>
+            const { data: relations, error: relationsError } = await supabase
+                .from('coach_players')
+                .select('coach_id')
+                .eq('player_id', player.id);
+            
+            if (relationsError) throw relationsError;
+
+            const coachIds = relations.map(r => r.coach_id);
+            const coachInfoContainer = document.getElementById('parent-coach-info');
+            const scheduleContainer = document.getElementById('parent-schedule-view');
+            
+            coachInfoContainer.innerHTML = '<h3 class="text-xl font-bold mb-2">المدربون</h3>';
+            scheduleContainer.innerHTML = '';
+
+            if (coachIds.length > 0) {
+                const { data: coaches, error: coachesError } = await supabase.from('coaches').select('*').in('id', coachIds);
+                if (coachesError) throw coachesError;
+
+                coaches.forEach(coach => {
+                    coachInfoContainer.innerHTML += `
+                        <div class="bg-card p-4 rounded-lg shadow-sm mb-4">
+                            <p class="font-bold">${coach.name}</p>
                             <p class="text-sm text-muted">الهاتف: ${coach.phone || 'غير متوفر'}</p>
                         </div>
                     `;
-                    await loadScheduleFromSupabase(coachId);
-                }
+                });
+
+                const { data: schedules, error: schedulesError } = await supabase.from('schedules').select('*').in('coach_id', coachIds);
+                if (schedulesError) throw schedulesError;
+
+                const schedulesMap = new Map(schedules.map(s => [s.coach_id, s]));
+
+                coaches.forEach(coach => {
+                    const schedule = schedulesMap.get(coach.id);
+                    scheduleContainer.innerHTML += `<h4 class="font-bold text-md mt-4 mb-2">جدول المدرب: ${coach.name}</h4>`;
+                    if (schedule) {
+                        scheduleContainer.innerHTML += Object.keys(DAYS_OF_WEEK).map(day => `
+                            <div class="flex justify-between items-center p-2 rounded ${schedule[day] ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-50 dark:bg-gray-700/20'}">
+                                <span class="font-bold">${DAYS_OF_WEEK[day]}</span>
+                                <span class="text-muted">${schedule[day] || 'راحة'}</span>
+                            </div>
+                        `).join('');
+                    } else {
+                        scheduleContainer.innerHTML += '<p class="text-muted text-center text-sm">لم يقم هذا المدرب بوضع جدول حتى الآن.</p>';
+                    }
+                });
+            } else {
+                coachInfoContainer.innerHTML += '<p class="text-muted text-center">اللاعب غير معين لأي مدرب.</p>';
+                scheduleContainer.innerHTML = '<p class="text-muted text-center">لا يوجد جدول لعرضه.</p>';
             }
+            
+            const medicalNotesView = document.querySelector('#medical-notes #medical-notes-view');
+            const medicalNotesForm = document.querySelector('#medical-notes #medical-notes-form');
+            const medicalNotesInput = document.getElementById('medical-notes-input');
+            const medicalNotesContent = medicalNotesView.querySelector('p');
+            
+            medicalNotesInput.value = player.medical_notes || '';
+            medicalNotesContent.textContent = player.medical_notes || "لا توجد ملاحظات طبية حالياً.";
+            
+            if (isCoachOrAdminViewing) {
+                medicalNotesView.classList.remove('hidden');
+                medicalNotesForm.classList.add('hidden');
+            } else {
+                medicalNotesView.classList.add('hidden');
+                medicalNotesForm.classList.remove('hidden');
+            }
+            medicalNotesForm.removeEventListener('submit', handleSaveMedicalNotes); // Remove old before adding
+            medicalNotesForm.addEventListener('submit', handleSaveMedicalNotes);
+
             await loadAttendanceFromSupabase(player.id);
             await loadAnnouncementsFromSupabase();
-            document.getElementById('medical-notes-input').value = player.medical_notes || '';
-        } catch (error) {
-            console.error("Error loading player dashboard data:", error);
-            showToast("حدث خطأ أثناء تحميل بيانات اللاعب", "error");
-        }
 
-        // جلب التقييمات من Supabase
-        try {
-            const { data: evaluations, error: evalError } = await supabase
-                .from('evaluations')
-                .select('*')
-                .eq('player_id', player.id)
-                .order('date', { ascending: true });
+            const { data: evaluations, error: evalError } = await supabase.from('evaluations').select('*').eq('player_id', player.id).order('date', { ascending: true });
             if (evalError) throw evalError;
+            
             player.evaluations = evaluations || [];
             appState.currentPlayer = player;
-
+            
             const snapshotContent = document.getElementById('player-snapshot-content');
             const noDataView = document.getElementById('no-data-view');
             const skillsGrid = document.getElementById('skills-grid');
 
             if (!player.evaluations || player.evaluations.length === 0) {
-                snapshotContent.innerHTML = '';
-                skillsGrid.innerHTML = '';
-                snapshotContent.classList.add('hidden');
-                noDataView.classList.remove('hidden');
-                if (progressChart) progressChart.destroy();
-                document.getElementById('skill-filters').innerHTML = '';
-                return;
+                 snapshotContent.classList.add('hidden');
+                 noDataView.classList.remove('hidden');
+                 skillsGrid.innerHTML = '';
+                 if (progressChart) progressChart.destroy();
+                 document.getElementById('skill-filters').innerHTML = '';
+            } else {
+                 snapshotContent.classList.remove('hidden');
+                 noDataView.classList.add('hidden');
+                 renderPlayerInfoAndRadar(player);
+                 populateSkillCards(player);
+                 renderProgressChart(player);
             }
 
-            snapshotContent.classList.remove('hidden');
-            noDataView.classList.add('hidden');
-
-            renderPlayerInfoAndRadar(player);
-            populateSkillCards(player);
-            renderProgressChart(player);
         } catch (error) {
-            console.error("Error fetching evaluations:", error);
-            showToast("خطأ في تحميل بيانات التقييم.", "error");
+            console.error("Error loading player dashboard data:", error);
+            showToast(`حدث خطأ أثناء تحميل بيانات اللاعب: ${error.message}`, "error", 5000);
         }
     }
+    // ========== END: CORRECTED FUNCTION ==========
     
+    // ========== START: CORRECTED FUNCTION ==========
     function renderPlayerInfoAndRadar(playerData) {
         const container = document.getElementById('player-snapshot-content');
         const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
@@ -2142,7 +2042,7 @@
             <div id="player-info" class="text-center md:text-right">
                 <img id="player-avatar" src="${avatarSrc}" alt="صورة اللاعب" class="w-32 h-32 rounded-full object-cover mx-auto md:mx-0 mb-4 border-4" style="border-color: var(--primary-color);">
                 <h3 class="text-2xl font-bold">${playerData.name}</h3>
-                <p class="text-muted mt-1">المدرب: ${playerData.coachName || 'غير محدد'}</p>
+                <p class="text-muted mt-1">المدرب المقيم: ${latestEval.coach_name || 'غير محدد'}</p>
                  <p class="text-muted mt-1">آخر تحديث للتقييم: ${new Date(latestEval.date).toLocaleDateString('ar-EG')}</p>
             </div>
             <div class="chart-container"><canvas id="radarChart"></canvas></div>
@@ -2151,10 +2051,13 @@
         if (radarChart) radarChart.destroy();
         createRadarChart(playerData);
     }
-
+    // ========== END: CORRECTED FUNCTION ==========
+    
+    // ========== START: CORRECTED FUNCTION ==========
     function createRadarChart(playerData) {
         const ctx = document.getElementById('radarChart').getContext('2d');
         const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
+        const scores = latestEval.scores || {}; // Safety check for null scores
         const isDarkMode = document.documentElement.classList.contains('dark');
         const gridColor = isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)';
         const pointLabelColor = isDarkMode ? '#ECF0F1' : '#34495E';
@@ -2165,7 +2068,7 @@
                 labels: Object.values(SKILLS),
                 datasets: [{
                     label: `تقييم ${latestEval.date}`,
-                    data: Object.keys(SKILLS).map(key => latestEval.scores[key] || 0),
+                    data: Object.keys(SKILLS).map(key => scores[key] || 0),
                     backgroundColor: 'rgba(142, 68, 173, 0.2)',
                     borderColor: 'rgba(142, 68, 173, 1)',
                     borderWidth: 2,
@@ -2187,14 +2090,17 @@
             }
         });
     }
-    
+    // ========== END: CORRECTED FUNCTION ==========
+
+    // ========== START: CORRECTED FUNCTION ==========
     function populateSkillCards(playerData) {
         const skillsGrid = document.getElementById('skills-grid');
         skillsGrid.innerHTML = '';
         const latestEval = playerData.evaluations[playerData.evaluations.length - 1];
+        const scores = latestEval.scores || {}; // Safety check for null scores
 
         Object.keys(SKILLS).forEach(key => {
-            const score = latestEval.scores[key] || 0;
+            const score = scores[key] || 0;
             skillsGrid.innerHTML += `
                 <div class="bg-card p-5 rounded-xl shadow-md transition-shadow hover:shadow-lg">
                     <div class="flex items-center mb-3">
@@ -2210,6 +2116,7 @@
                 <p class="opacity-90">${latestEval.notes || "لا توجد ملاحظات جديدة."}</p>
             </div>`;
     }
+    // ========== END: CORRECTED FUNCTION ==========
     
     function generateStars(score) {
         let stars = '';
@@ -2244,6 +2151,7 @@
         document.querySelectorAll('.skill-filter').forEach(el => el.addEventListener('change', updateProgressChart));
     }
 
+    // ========== START: CORRECTED FUNCTION ==========
     function createProgressChart(playerData) {
         const ctx = document.getElementById('progressChart').getContext('2d');
         const isDarkMode = document.documentElement.classList.contains('dark');
@@ -2260,7 +2168,7 @@
                 labels: playerData.evaluations.map(e => new Date(e.date).toLocaleDateString('ar-EG')),
                 datasets: Object.keys(SKILLS).map(key => ({
                     label: SKILLS[key],
-                    data: playerData.evaluations.map(e => e.scores[key] || 0),
+                    data: playerData.evaluations.map(e => (e.scores || {})[key] || 0), // Safety check here
                     borderColor: colors[key],
                     backgroundColor: `${colors[key]}33`,
                     borderWidth: 2, fill: false, tension: 0.2,
@@ -2292,6 +2200,7 @@
             }
         });
     }
+    // ========== END: CORRECTED FUNCTION ==========
 
     function updateProgressChart() {
         if (!progressChart) return;
@@ -2331,19 +2240,8 @@
             }
             showToast("تم حفظ الملاحظات الطبية بنجاح.", "success");
             
-            // Refetch player data and re-render dashboard
-            const { data: updatedPlayer, error: fetchError } = await supabase
-                .from('players')
-                .select('*')
-                .eq('id', appState.currentPlayer.id)
-                .single();
-            
-            if (fetchError) {
-                throw fetchError;
-            }
-            
-            appState.currentPlayer = updatedPlayer;
-            renderParentDashboard(updatedPlayer);
+            appState.currentPlayer.medical_notes = notes; // Update state locally
+            renderParentDashboard(appState.currentPlayer);
 
         } catch (error) {
             console.error("Error saving medical notes:", error);
@@ -2351,32 +2249,6 @@
         } finally {
             hideLoader();
         }
-    }
-
-    async function loadAndRenderAnnouncements() {
-        const container = document.getElementById('announcements-view');
-        const section = document.getElementById('announcements-section');
-        const q = query(collection(db, "announcements"), orderBy("createdAt", "desc"), limit(5));
-        
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (snapshot.empty) {
-                section.classList.add('hidden');
-                return;
-            }
-            section.classList.remove('hidden');
-            container.innerHTML = '';
-            snapshot.forEach(docSnap => {
-                const ann = docSnap.data();
-                const date = ann.createdAt?.toDate().toLocaleDateString('ar-EG') || '';
-                container.innerHTML += `
-                    <div class="p-3 bg-blue-50 dark:bg-blue-900/20 border-r-4 border-blue-400 rounded">
-                        <p class="font-semibold">${ann.text}</p>
-                        <p class="text-xs text-muted text-left mt-1">${ann.authorName} - ${date}</p>
-                    </div>
-                `;
-            });
-        });
-        appState.unsubscribeListeners.push(unsubscribe);
     }
 
     async function handleSaveAnnouncement(e) {
@@ -2388,17 +2260,11 @@
         }
         showLoader();
         try {
-            const { data, error } = await supabase
-                .from('announcements')
-                .insert([{ content: content, created_at: new Date().toISOString() }]);
-
-            if (error) {
-                throw error;
-            }
-
+            const { error } = await supabase.from('announcements').insert([{ content: content, created_at: new Date().toISOString() }]);
+            if (error) throw error;
             document.getElementById('admin-announcement-form').reset();
             showToast('تم نشر الإعلان بنجاح', 'success');
-            renderAnnouncementsList('admin'); // Refresh the list
+            renderAnnouncementsList('admin');
         } catch (error) {
             console.error("Error adding announcement: ", error);
             showToast('فشل نشر الإعلان', 'error');
@@ -2413,29 +2279,17 @@
         if (!container) return;
 
         try {
-            const { data: announcements, error } = await supabase
-                .from('announcements')
-                .select('*')
-                .order('created_at', { ascending: false })
-                .limit(5);
+            const { data: announcements, error } = await supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(5);
+            if (error) throw error;
 
-            if (error) {
-                throw error;
-            }
-
-            container.innerHTML = '';
-            if (!announcements || announcements.length === 0) {
-                container.innerHTML = '<p class="text-muted text-center p-4">لا توجد إعلانات حالياً.</p>';
-                return;
-            }
-
+            container.innerHTML = announcements.length === 0 ? '<p class="text-muted text-center p-4">لا توجد إعلانات حالياً.</p>' : '';
             announcements.forEach((announcement) => {
                 const el = document.createElement('div');
                 el.className = 'list-item p-3 rounded-lg';
                 el.innerHTML = `
                     <p class="font-bold">${announcement.content}</p>
                     <div class="text-xs text-muted mt-1">
-                        <span>${new Date(announcement.created_at).toLocaleString()}</span>
+                        <span>${new Date(announcement.created_at).toLocaleString('ar-SA')}</span>
                         ${role === 'admin' ? `<button data-id="${announcement.id}" class="delete-announcement-btn text-red-500 mr-2">حذف</button>` : ''}
                     </div>
                 `;
@@ -2443,21 +2297,15 @@
             });
 
             if (role === 'admin') {
-                document.querySelectorAll('.delete-announcement-btn').forEach(btn => {
+                container.querySelectorAll('.delete-announcement-btn').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         const docId = e.target.dataset.id;
                         showConfirmation('حذف الإعلان', 'هل أنت متأكد من حذف هذا الإعلان؟', async () => {
-                            const { error } = await supabase
-                                .from('announcements')
-                                .delete()
-                                .eq('id', docId);
-
+                            const { error } = await supabase.from('announcements').delete().eq('id', docId);
                             if (error) {
                                 showToast('حدث خطأ أثناء حذف الإعلان', 'error');
-                                console.error('Error deleting announcement:', error);
                             } else {
                                 showToast('تم حذف الإعلان', 'success');
-                                renderAnnouncementsList('admin'); // Refresh the list
                             }
                         });
                     });
@@ -2477,7 +2325,6 @@
             return;
         }
         
-        container.innerHTML = ''; // Clear list
         if (appState.coachPlayers.length === 0) {
             container.innerHTML = '<p class="text-muted text-center">لا يوجد لاعبون مسجلون لهذا المدرب.</p>';
             return;
@@ -2492,21 +2339,15 @@
                 .eq('present', true)
                 .eq('coach_id', appState.currentUser.id);
 
-            if (error) {
-                throw error;
-            }
+            if (error) throw error;
 
-            const presentIds = attendanceData ? attendanceData.map(item => item.player_id) : [];
-
-            // فلترة اللاعبين حسب الفئة المختارة
+            const presentIds = attendanceData ? new Set(attendanceData.map(item => item.player_id)) : new Set();
             const category = document.getElementById('attendance-category').value;
-            let filteredPlayers = appState.coachPlayers;
-            if (category !== 'all') {
-                filteredPlayers = appState.coachPlayers.filter(player => player.category === category);
-            }
+            const filteredPlayers = category === 'all' ? appState.coachPlayers : appState.coachPlayers.filter(p => p.category === category);
             
+            container.innerHTML = '';
             filteredPlayers.forEach(player => {
-                const isChecked = presentIds.includes(player.id) ? 'checked' : '';
+                const isChecked = presentIds.has(player.id) ? 'checked' : '';
                 container.innerHTML += `
                     <label class="flex items-center justify-between p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer">
                         <span>${player.name}</span>
@@ -2529,24 +2370,19 @@
             return;
         }
         showLoader();
-        const presentPlayerIds = Array.from(document.querySelectorAll('.attendance-checkbox:checked')).map(cb => cb.value);
-        const allPlayerIds = appState.coachPlayers.map(p => p.id);
+        const presentPlayerIds = new Set(Array.from(document.querySelectorAll('.attendance-checkbox:checked')).map(cb => parseInt(cb.value, 10)));
+        const allPlayerIdsOnSheet = new Set(Array.from(document.querySelectorAll('.attendance-checkbox')).map(cb => parseInt(cb.value, 10)));
 
-        const attendanceRecords = allPlayerIds.map(playerId => ({
+        const attendanceRecords = Array.from(allPlayerIdsOnSheet).map(playerId => ({
             date: date,
             coach_id: appState.currentUser.id,
             player_id: playerId,
-            present: presentPlayerIds.includes(String(playerId))
+            present: presentPlayerIds.has(playerId)
         }));
 
         try {
-            const { error } = await supabase
-                .from('attendance')
-                .upsert(attendanceRecords, { onConflict: 'date, player_id' });
-
-            if (error) {
-                throw error;
-            }
+            const { error } = await supabase.from('attendance').upsert(attendanceRecords, { onConflict: 'date, player_id' });
+            if (error) throw error;
             showToast("تم حفظ سجل الحضور بنجاح.", "success");
         } catch (error) {
             console.error("Error saving attendance:", error);
@@ -2554,16 +2390,6 @@
         } finally {
             hideLoader();
         }
-    }
-
-    async function loadAndRenderAttendance(playerId, coachId) {
-        // Replaced Firebase logic with Supabase realtime based on playerId
-        const container = document.getElementById('parent-attendance-view');
-        if (!container) return;
-        container.innerHTML = '<p class="text-muted text-center">جاري تحميل الحضور...</p>';
-        window.appState = window.appState || { unsubscribeListeners: [] };
-        const unsubscribe = setupAttendanceRealtime(playerId, 'parent-attendance-view');
-        appState.unsubscribeListeners.push(unsubscribe);
     }
 
     // --- Theme Toggle ---
@@ -2582,7 +2408,6 @@
                 sunIcon.classList.remove('hidden');
                 moonIcon.classList.add('hidden');
             }
-            // Re-render charts if they exist
             if (appState.currentPlayer && appState.currentPlayer.evaluations?.length > 0) {
                 if (radarChart) radarChart.destroy();
                 if (progressChart) progressChart.destroy();
@@ -2599,7 +2424,6 @@
             applyTheme(newTheme);
         });
 
-        // Load saved theme on startup
         const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         applyTheme(savedTheme);
     }
@@ -2608,147 +2432,13 @@
     function initApp() {
         setupThemeToggle();
         attachEventListeners();
-
-        // Supabase auth session handling
-        const applySession = async (session) => {
-            // Clear any existing listeners before setting up new ones
-            appState.unsubscribeListeners.forEach(unsub => { try { unsub(); } catch(e) {} });
-            appState.unsubscribeListeners = [];
-
-            showLoader();
-            if (session && session.user) {
-                // Prefer localStorage role if available
-                const currentUser = window.authManager?.getCurrentUser?.();
-                if (currentUser?.type === 'admin') {
-                    appState.currentUser = session.user;
-                    appState.userData = currentUser.data;
-                    appState.userRole = 'admin';
-                    renderAdminDashboard();
-                    showPage('admin-dashboard-page');
-                } else if (currentUser?.type === 'coach') {
-                    appState.currentUser = currentUser.data;
-                    appState.userData = currentUser.data;
-                    appState.userRole = 'coach';
-                    renderCoachDashboard();
-                    showPage('coach-dashboard-page');
-                } else if (currentUser?.type === 'parent') {
-                    appState.currentUser = currentUser.data;
-                    appState.userData = currentUser.data;
-                    appState.userRole = 'parent';
-                    showPage('parent-dashboard-page');
-                } else {
-                    // Default: authenticated via Supabase = admin
-                    appState.currentUser = session.user;
-                    appState.userData = session.user;
-                    appState.userRole = 'admin';
-                    renderAdminDashboard();
-                    showPage('admin-dashboard-page');
-                }
-            } else {
-                // No Supabase session, fallback to localStorage users (coach/parent)
-                const currentUser = window.authManager?.getCurrentUser?.();
-                if (currentUser) {
-                    if (currentUser.type === 'coach') {
-                        appState.currentUser = currentUser.data;
-                        appState.userData = currentUser.data;
-                        appState.userRole = 'coach';
-                        renderCoachDashboard();
-                        showPage('coach-dashboard-page');
-                    } else if (currentUser.type === 'parent') {
-                        appState.currentUser = currentUser.data;
-                        appState.userData = currentUser.data;
-                        appState.userRole = 'parent';
-                        showPage('parent-dashboard-page');
-                    } else if (currentUser.type === 'admin') {
-                        appState.currentUser = currentUser.data;
-                        appState.userData = currentUser.data;
-                        appState.userRole = 'admin';
-                        renderAdminDashboard();
-                        showPage('admin-dashboard-page');
-                    } else {
-                        showPage('role-selection-page');
-                    }
-                } else {
-                    showPage('role-selection-page');
-                }
-            }
-            hideLoader();
-        };
-
-        // Subscribe to auth changes
-        supabase.auth.onAuthStateChange((_event, session) => {
-            applySession(session);
-        });
+        showPage('role-selection-page');
     }
 
     // Run the app
     initApp();
 </script>
 
-<!-- App Scripts -->
-<script src="auth.js"></script>
-<script src="players-management.js"></script>
-<script src="attendance.js"></script>
-
-<script>
-// Load last 10 attendance records for a player
-async function loadRecentAttendance(playerId, container) {
-  const { data, error } = await supabase
-    .from('attendance')
-    .select('*')
-    .eq('player_id', playerId)
-    .order('date', { ascending: false })
-    .limit(10);
-
-  if (error) {
-    console.error('Load attendance error:', error);
-    container.innerHTML = '<p class="text-red-500 text-center">حدث خطأ أثناء تحميل سجل الحضور.</p>';
-    return;
-  }
-
-  container.innerHTML = '';
-  (data || []).forEach(record => {
-    const isPresent = record.present === true; // adjust if your schema differs
-    container.innerHTML += `
-      <div class="flex justify-between items-center p-2 rounded ${isPresent ? 'bg-green-50 dark:bg-green-900/20' : 'bg-red-50 dark:bg-red-900/20'}">
-        <span class="font-bold">${new Date(record.date).toLocaleDateString('ar-EG')}</span>
-        <span class="${isPresent ? 'text-green-600' : 'text-red-600'} font-bold">${isPresent ? 'حاضر' : 'غائب'}</span>
-      </div>
-    `;
-  });
-}
-
-// Subscribe to realtime attendance changes for a specific player
-function setupAttendanceRealtime(playerId, containerId) {
-  const container = document.getElementById(containerId);
-  if (!container) {
-    console.warn('Attendance container not found:', containerId);
-    return () => {};
-  }
-
-  // Initial load
-  loadRecentAttendance(playerId, container);
-
-  // Realtime channel filtered by player_id
-  const channel = supabase.channel('attendance_changes_' + playerId)
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'attendance',
-      filter: `player_id=eq.${playerId}`
-    }, payload => {
-      loadRecentAttendance(playerId, container);
-    })
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('Realtime subscribed for player', playerId);
-      }
-    });
-
-  // Return unsubscriber
-  return () => supabase.removeChannel(channel);
-}
-</script>
-
 </body>
 </html>
+
